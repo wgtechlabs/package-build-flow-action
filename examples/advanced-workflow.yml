@@ -1,0 +1,78 @@
+name: Advanced Build and Publish
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Build and Publish Package
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v1
+        with:
+          # Registry Configuration
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          npm-registry-url: 'https://registry.npmjs.org'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-registry-url: 'https://npm.pkg.github.com'
+          package-scope: '@myorg'
+          
+          # Branch Configuration
+          main-branch: 'main'
+          dev-branch: 'dev'
+          
+          # Package Configuration
+          package-path: './package.json'
+          build-script: 'build'
+          version-prefix: 'v'
+          
+          # Security Configuration
+          audit-enabled: 'true'
+          audit-level: 'high'
+          fail-on-audit: 'false'
+          
+          # PR Comment Configuration
+          pr-comment-enabled: 'true'
+          
+          # Publishing Configuration
+          publish-enabled: 'true'
+          dry-run: 'false'
+      
+      - name: Display Build Results
+        run: |
+          echo "📦 Package Version: ${{ steps.build.outputs.package-version }}"
+          echo "🔄 Build Flow Type: ${{ steps.build.outputs.build-flow-type }}"
+          echo "📋 Short SHA: ${{ steps.build.outputs.short-sha }}"
+          echo "📤 NPM Published: ${{ steps.build.outputs.npm-published }}"
+          echo "📤 GitHub Published: ${{ steps.build.outputs.github-published }}"
+          echo "🔒 Audit Completed: ${{ steps.build.outputs.audit-completed }}"
+          echo "⚠️  Total Vulnerabilities: ${{ steps.build.outputs.total-vulnerabilities }}"
+          echo "🔴 Critical: ${{ steps.build.outputs.critical-vulnerabilities }}"
+          echo "🟠 High: ${{ steps.build.outputs.high-vulnerabilities }}"
+      
+      - name: Post to Slack
+        if: steps.build.outputs.npm-published == 'true'
+        run: |
+          echo "Package published: ${{ steps.build.outputs.package-version }}"
+          echo "Install command: ${{ steps.build.outputs.registry-urls }}"
+          # Add your Slack webhook or notification here

@@ -1,0 +1,31 @@
+name: Basic Build and Publish
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build and Publish Package
+        uses: wgtechlabs/package-build-flow-action@v1
+        with:
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          registry: 'both'

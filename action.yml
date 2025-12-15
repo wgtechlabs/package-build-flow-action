@@ -1,0 +1,238 @@
+name: 'NPM Package Build Flow'
+description: 'Automated NPM package versioning, building, and publishing with intelligent flow detection'
+author: 'WG Technology Labs'
+
+inputs:
+  # Registry Configuration
+  registry:
+    description: 'Target package registry (npm, github, or both)'
+    required: false
+    default: 'both'
+  
+  npm-token:
+    description: 'NPM access token (required if registry includes npm)'
+    required: false
+  
+  npm-registry-url:
+    description: 'NPM registry URL'
+    required: false
+    default: 'https://registry.npmjs.org'
+  
+  github-token:
+    description: 'GitHub token for GitHub Packages'
+    required: false
+    default: ${{ github.token }}
+  
+  github-registry-url:
+    description: 'GitHub Packages registry URL'
+    required: false
+    default: 'https://npm.pkg.github.com'
+  
+  package-scope:
+    description: 'Package scope for GitHub Packages (e.g., @myorg)'
+    required: false
+  
+  # Branch Configuration
+  main-branch:
+    description: 'Name of main/production branch'
+    required: false
+    default: 'main'
+  
+  dev-branch:
+    description: 'Name of development branch'
+    required: false
+    default: 'dev'
+  
+  # Package Configuration
+  package-path:
+    description: 'Path to package.json'
+    required: false
+    default: './package.json'
+  
+  build-script:
+    description: 'NPM script to run before publishing'
+    required: false
+    default: 'build'
+  
+  version-prefix:
+    description: 'Prefix for version tags'
+    required: false
+    default: ''
+  
+  # Security Configuration
+  audit-enabled:
+    description: 'Enable npm audit security scanning'
+    required: false
+    default: 'true'
+  
+  audit-level:
+    description: 'Minimum severity level for npm audit'
+    required: false
+    default: 'high'
+  
+  fail-on-audit:
+    description: 'Fail build if vulnerabilities found'
+    required: false
+    default: 'false'
+  
+  # PR Comment Configuration
+  pr-comment-enabled:
+    description: 'Enable PR comments with installation instructions'
+    required: false
+    default: 'true'
+  
+  pr-comment-template:
+    description: 'Custom PR comment template'
+    required: false
+  
+  # Publishing Configuration
+  publish-enabled:
+    description: 'Enable publishing to registry'
+    required: false
+    default: 'true'
+  
+  dry-run:
+    description: 'Perform dry run without publishing'
+    required: false
+    default: 'false'
+
+outputs:
+  # Version Outputs
+  package-version:
+    description: 'Generated package version'
+    value: ${{ steps.generate-outputs.outputs.package-version }}
+  
+  registry-urls:
+    description: 'Installation commands for each registry'
+    value: ${{ steps.generate-outputs.outputs.registry-urls }}
+  
+  build-flow-type:
+    description: 'Detected flow type (pr, dev, patch, staging, wip)'
+    value: ${{ steps.detect-flow.outputs.build-flow-type }}
+  
+  short-sha:
+    description: 'Short commit SHA'
+    value: ${{ steps.detect-flow.outputs.short-sha }}
+  
+  # Publishing Outputs
+  npm-published:
+    description: 'Whether published to NPM (true/false)'
+    value: ${{ steps.publish.outputs.npm-published }}
+  
+  github-published:
+    description: 'Whether published to GitHub Packages (true/false)'
+    value: ${{ steps.publish.outputs.github-published }}
+  
+  # Security Audit Outputs
+  audit-completed:
+    description: 'Whether security audit completed'
+    value: ${{ steps.audit.outputs.audit-completed }}
+  
+  total-vulnerabilities:
+    description: 'Total vulnerabilities found'
+    value: ${{ steps.audit.outputs.total-vulnerabilities }}
+  
+  critical-vulnerabilities:
+    description: 'Critical vulnerabilities count'
+    value: ${{ steps.audit.outputs.critical-vulnerabilities }}
+  
+  high-vulnerabilities:
+    description: 'High vulnerabilities count'
+    value: ${{ steps.audit.outputs.high-vulnerabilities }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Detect Build Flow
+      id: detect-flow
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/detect-package-flow.sh
+      env:
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        MAIN_BRANCH: ${{ inputs.main-branch }}
+        DEV_BRANCH: ${{ inputs.dev-branch }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        VERSION_PREFIX: ${{ inputs.version-prefix }}
+    
+    - name: Configure Registries
+      id: configure-registries
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/configure-registries.sh
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+    
+    - name: Build and Publish Package
+      id: publish
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/build-and-publish.sh
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
+        NPM_TAG: ${{ steps.detect-flow.outputs.npm-tag }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        BUILD_SCRIPT: ${{ inputs.build-script }}
+        PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+    
+    - name: Run Security Audit
+      id: audit
+      if: inputs.audit-enabled == 'true'
+      shell: bash
+      run: |
+        node ${{ github.action_path }}/scripts/audit-package.js
+      env:
+        AUDIT_LEVEL: ${{ inputs.audit-level }}
+        FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+    
+    - name: Generate Outputs
+      id: generate-outputs
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/generate-outputs.sh
+      env:
+        PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        REGISTRY: ${{ inputs.registry }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        NPM_PUBLISHED: ${{ steps.publish.outputs.npm-published }}
+        GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
+    
+    - name: Post PR Comment
+      if: inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        node ${{ github.action_path }}/scripts/pr-comment.js
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        BUILD_FLOW_TYPE: ${{ steps.detect-flow.outputs.build-flow-type }}
+        PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
+        NPM_TAG: ${{ steps.detect-flow.outputs.npm-tag }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        REGISTRY: ${{ inputs.registry }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        AUDIT_ENABLED: ${{ inputs.audit-enabled }}
+        PR_COMMENT_TEMPLATE: ${{ inputs.pr-comment-template }}
+        NPM_PUBLISHED: ${{ steps.publish.outputs.npm-published }}
+        GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
+
+branding:
+  icon: 'package'
+  color: 'blue'
