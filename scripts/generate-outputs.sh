@@ -34,7 +34,12 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     if [[ "$PACKAGE_NAME" == @* ]]; then
       GITHUB_PACKAGE_NAME="$PACKAGE_NAME"
     elif [ -n "$PACKAGE_SCOPE" ]; then
-      GITHUB_PACKAGE_NAME="${PACKAGE_SCOPE}/${PACKAGE_NAME}"
+      # Ensure scope starts with @
+      if [[ "$PACKAGE_SCOPE" == @* ]]; then
+        GITHUB_PACKAGE_NAME="${PACKAGE_SCOPE}/${PACKAGE_NAME}"
+      else
+        GITHUB_PACKAGE_NAME="@${PACKAGE_SCOPE}/${PACKAGE_NAME}"
+      fi
     else
       GITHUB_PACKAGE_NAME="$PACKAGE_NAME"
     fi

@@ -80,7 +80,12 @@ if [ "$DRY_RUN" = "true" ]; then
     # Ensure package is scoped for GitHub Packages
     ORIGINAL_NAME=$(jq -r '.name' "$PACKAGE_PATH")
     if [[ "$ORIGINAL_NAME" != @* ]] && [ -n "$PACKAGE_SCOPE" ]; then
-      SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      # Ensure scope starts with @
+      if [[ "$PACKAGE_SCOPE" == @* ]]; then
+        SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      else
+        SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      fi
       jq --arg name "$SCOPED_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
       mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
       echo "📝 Scoped package name: $SCOPED_NAME"
@@ -123,7 +128,12 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
   NEEDS_RESTORE=false
   
   if [[ "$ORIGINAL_NAME" != @* ]] && [ -n "$PACKAGE_SCOPE" ]; then
-    SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+    # Ensure scope starts with @
+    if [[ "$PACKAGE_SCOPE" == @* ]]; then
+      SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+    else
+      SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+    fi
     jq --arg name "$SCOPED_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
     mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
     echo "📝 Scoped package name for GitHub: $SCOPED_NAME"

@@ -59,7 +59,12 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
   
   # Determine scope
   if [ -n "$PACKAGE_SCOPE" ]; then
-    SCOPE="$PACKAGE_SCOPE"
+    # Ensure scope starts with @
+    if [[ "$PACKAGE_SCOPE" == @* ]]; then
+      SCOPE="$PACKAGE_SCOPE"
+    else
+      SCOPE="@${PACKAGE_SCOPE}"
+    fi
   else
     # Try to extract scope from package name
     if [[ "$PACKAGE_NAME" == @* ]]; then

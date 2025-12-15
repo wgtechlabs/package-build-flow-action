@@ -82,8 +82,9 @@ elif [ "$EVENT_NAME" = "push" ]; then
   if [ "$REF_NAME" = "$MAIN_BRANCH" ]; then
     # Push to main branch - staging/RC
     BUILD_FLOW_TYPE="staging"
-    # Get RC number (count commits or use timestamp)
-    RC_NUMBER=$(date +%s | tail -c 6)
+    # Get RC number (use last 6 digits of timestamp)
+    RC_NUMBER=$(date +%s)
+    RC_NUMBER=${RC_NUMBER: -6}
     PACKAGE_VERSION="${BASE_VERSION}-rc.${RC_NUMBER}"
     NPM_TAG="rc"
     echo "🎯 Flow: Staging release (push to main)"

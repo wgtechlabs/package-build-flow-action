@@ -92,7 +92,9 @@ if ((REGISTRY === 'npm' || REGISTRY === 'both') && NPM_PUBLISHED) {
 if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
   let ghPackageName = packageName;
   if (!packageName.startsWith('@') && PACKAGE_SCOPE) {
-    ghPackageName = `${PACKAGE_SCOPE}/${packageName}`;
+    // Ensure scope starts with @
+    const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+    ghPackageName = `${scope}/${packageName}`;
   }
   
   installCommands.push({
