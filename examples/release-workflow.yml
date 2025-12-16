@@ -1,0 +1,92 @@
+name: Production Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Extract Release Version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+      
+      - name: Update Package Version
+        run: |
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+      
+      - name: Build and Publish Release
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v1
+        with:
+          # Publish to both registries
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          package-scope: '@myorg'
+          
+          # Build configuration
+          build-script: 'build'
+          
+          # Security - fail on vulnerabilities for production
+          audit-enabled: 'true'
+          audit-level: 'high'
+          fail-on-audit: 'true'
+          
+          # No PR comments for releases
+          pr-comment-enabled: 'false'
+      
+      - name: Display Release Results
+        run: |
+          echo "✅ Release published successfully!"
+          echo "📦 Version: ${{ steps.build.outputs.package-version }}"
+          echo "📤 NPM Published: ${{ steps.build.outputs.npm-published }}"
+          echo "📤 GitHub Published: ${{ steps.build.outputs.github-published }}"
+          echo ""
+          echo "📥 Installation:"
+          echo "${{ steps.build.outputs.registry-urls }}"
+      
+      - name: Create Release Notes
+        run: |
+          cat << EOF > release-notes.md
+          # Release ${{ steps.version.outputs.version }}
+          
+          ## Installation
+          
+          ### NPM Registry
+          \`\`\`bash
+          npm install mypackage@${{ steps.version.outputs.version }}
+          \`\`\`
+          
+          ### GitHub Packages
+          \`\`\`bash
+          npm install @myorg/mypackage@${{ steps.version.outputs.version }}
+          \`\`\`
+          
+          ## Security
+          - ✅ Security audit passed
+          - 🔒 Vulnerabilities: ${{ steps.build.outputs.total-vulnerabilities }}
+          
+          ---
+          Published: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+          
+          cat release-notes.md
