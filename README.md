@@ -115,7 +115,7 @@ Tag: patch
 | `npm-registry-url` | NPM registry URL | `https://registry.npmjs.org` | No |
 | `github-token` | GitHub token for GitHub Packages | `${{ github.token }}` | No |
 | `github-registry-url` | GitHub Packages registry URL | `https://npm.pkg.github.com` | No |
-| `package-scope` | Package scope for GitHub Packages (e.g., `@myorg`). If not provided, automatically uses repository owner | - | No |
+| `package-scope` | Package scope for GitHub Packages (e.g., `@myorg`). If not provided, uses the repository owner only when the package name in `package.json` is unscoped; if the package name is already scoped, its existing scope is kept | - | No |
 
 ### Branch Configuration
 
