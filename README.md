@@ -475,7 +475,9 @@ See the [examples](./examples) directory for complete workflow examples:
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a Pull Request.
+
+This repository follows the [Clean Commit](https://github.com/wgtechlabs/clean-commit) convention with emoji-based commit messages. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
