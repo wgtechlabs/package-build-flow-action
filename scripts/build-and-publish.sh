@@ -79,12 +79,23 @@ if [ "$DRY_RUN" = "true" ]; then
     
     # Ensure package is scoped for GitHub Packages
     ORIGINAL_NAME=$(jq -r '.name' "$PACKAGE_PATH")
-    if [[ "$ORIGINAL_NAME" != @* ]] && [ -n "$PACKAGE_SCOPE" ]; then
-      # Ensure scope starts with @
-      if [[ "$PACKAGE_SCOPE" == @* ]]; then
-        SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+    if [[ "$ORIGINAL_NAME" != @* ]]; then
+      # Determine scope
+      if [ -n "$PACKAGE_SCOPE" ]; then
+        # Use provided scope
+        if [[ "$PACKAGE_SCOPE" == @* ]]; then
+          SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+        else
+          SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+        fi
       else
-        SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+        # Auto-scope using repository owner
+        if [ -z "$GITHUB_REPOSITORY_OWNER" ]; then
+          echo "❌ Error: GITHUB_REPOSITORY_OWNER environment variable not set"
+          exit 1
+        fi
+        SCOPED_NAME="@${GITHUB_REPOSITORY_OWNER}/${ORIGINAL_NAME}"
+        echo "💡 Auto-scoping: ${ORIGINAL_NAME} → ${SCOPED_NAME}"
       fi
       jq --arg name "$SCOPED_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
       mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
@@ -127,12 +138,23 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
   ORIGINAL_NAME=$(jq -r '.name' "$PACKAGE_PATH")
   NEEDS_RESTORE=false
   
-  if [[ "$ORIGINAL_NAME" != @* ]] && [ -n "$PACKAGE_SCOPE" ]; then
-    # Ensure scope starts with @
-    if [[ "$PACKAGE_SCOPE" == @* ]]; then
-      SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+  if [[ "$ORIGINAL_NAME" != @* ]]; then
+    # Determine scope
+    if [ -n "$PACKAGE_SCOPE" ]; then
+      # Use provided scope
+      if [[ "$PACKAGE_SCOPE" == @* ]]; then
+        SCOPED_NAME="${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      else
+        SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      fi
     else
-      SCOPED_NAME="@${PACKAGE_SCOPE}/${ORIGINAL_NAME}"
+      # Auto-scope using repository owner
+      if [ -z "$GITHUB_REPOSITORY_OWNER" ]; then
+        echo "❌ Error: GITHUB_REPOSITORY_OWNER environment variable not set"
+        exit 1
+      fi
+      SCOPED_NAME="@${GITHUB_REPOSITORY_OWNER}/${ORIGINAL_NAME}"
+      echo "💡 Auto-scoping: ${ORIGINAL_NAME} → ${SCOPED_NAME}"
     fi
     jq --arg name "$SCOPED_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
     mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"

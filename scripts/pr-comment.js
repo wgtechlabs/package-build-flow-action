@@ -91,10 +91,19 @@ if ((REGISTRY === 'npm' || REGISTRY === 'both') && NPM_PUBLISHED) {
 
 if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
   let ghPackageName = packageName;
-  if (!packageName.startsWith('@') && PACKAGE_SCOPE) {
-    // Ensure scope starts with @
-    const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
-    ghPackageName = `${scope}/${packageName}`;
+  let wasAutoScoped = false;
+  
+  if (!packageName.startsWith('@')) {
+    if (PACKAGE_SCOPE) {
+      // Ensure scope starts with @
+      const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+      ghPackageName = `${scope}/${packageName}`;
+    } else {
+      // Auto-scope using repository owner
+      const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
+      ghPackageName = `@${repoOwner}/${packageName}`;
+      wasAutoScoped = true;
+    }
   }
   
   installCommands.push({
@@ -103,7 +112,8 @@ if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
       `npm install ${ghPackageName}@${PACKAGE_VERSION}`,
       `npm install ${ghPackageName}@${NPM_TAG}  # Use dist-tag`
     ],
-    url: `https://github.com/${owner}/${repoName}/packages`
+    url: `https://github.com/${owner}/${repoName}/packages`,
+    note: wasAutoScoped ? `✨ Auto-scoped as \`${ghPackageName}\` (from repository owner)` : null
   });
 }
 
@@ -173,8 +183,11 @@ ${flowInfo.description}
   if (installCommands.length === 0) {
     commentBody += '⚠️  Package was not published to any registry.\n';
   } else {
-    installCommands.forEach(({ registry, commands, url }) => {
+    installCommands.forEach(({ registry, commands, url, note }) => {
       commentBody += `#### ${registry}\n\n\`\`\`bash\n${commands.join('\n')}\n\`\`\`\n\n`;
+      if (note) {
+        commentBody += `${note}\n\n`;
+      }
       commentBody += `[View on ${registry}](${url})\n\n`;
     });
   }

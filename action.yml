@@ -29,7 +29,7 @@ inputs:
     default: 'https://npm.pkg.github.com'
   
   package-scope:
-    description: 'Package scope for GitHub Packages (e.g., @myorg)'
+    description: 'Package scope for GitHub Packages (e.g., @myorg). If not provided and package is unscoped, automatically uses repository owner'
     required: false
   
   # Branch Configuration
@@ -168,6 +168,7 @@ runs:
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         PACKAGE_PATH: ${{ inputs.package-path }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Build and Publish Package
       id: publish
@@ -185,6 +186,7 @@ runs:
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Run Security Audit
       id: audit
@@ -211,6 +213,7 @@ runs:
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         NPM_PUBLISHED: ${{ steps.publish.outputs.npm-published }}
         GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Post PR Comment
       if: inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
