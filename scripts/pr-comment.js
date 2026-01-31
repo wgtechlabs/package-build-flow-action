@@ -113,7 +113,7 @@ if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
       `npm install ${ghPackageName}@${NPM_TAG}  # Use dist-tag`
     ],
     url: `https://github.com/${owner}/${repoName}/packages`,
-    note: wasAutoScoped ? `✨ Auto-scoped as \`${ghPackageName}\` (from repository owner)` : null
+    note: wasAutoScoped ? `✨ Auto-scoped as \`${ghPackageName}\` (from repository owner)` : undefined
   });
 }
 
