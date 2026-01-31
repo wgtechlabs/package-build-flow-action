@@ -35,7 +35,7 @@ jobs:
           npm-registry-url: 'https://registry.npmjs.org'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-registry-url: 'https://npm.pkg.github.com'
-          package-scope: '@myorg'
+          package-scope: '@myorg'  # Optional - if not provided, uses repository owner
           
           # Branch Configuration
           main-branch: 'main'
