@@ -80,7 +80,7 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
         exit 1
       fi
       SCOPE="@${GITHUB_REPOSITORY_OWNER}"
-      echo "🔧 Scope: $SCOPE (from ${GITHUB_REPOSITORY_OWNER}/repository)"
+      echo "🔧 Scope: $SCOPE (from repository owner: ${GITHUB_REPOSITORY_OWNER})"
       echo "📌 This is required by GitHub Packages - all packages must be scoped"
     fi
   fi
