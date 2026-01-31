@@ -15,44 +15,42 @@ Reference: https://github.com/wgtechlabs/clean-commit
 ## Commit Message Format
 
 ```text
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
+<emoji> <type>: <description>
+<emoji> <type>(<scope>): <description>
 ```
 
-## Types
+## The 9 Types
 
-- **feat**: A new feature
-- **fix**: A bug fix
-- **docs**: Documentation only changes
-- **style**: Changes that do not affect the meaning of the code (white-space, formatting, etc)
-- **refactor**: A code change that neither fixes a bug nor adds a feature
-- **perf**: A code change that improves performance
-- **test**: Adding missing tests or correcting existing tests
-- **build**: Changes that affect the build system or external dependencies
-- **ci**: Changes to CI configuration files and scripts
-- **chore**: Other changes that don't modify src or test files
-- **revert**: Reverts a previous commit
+| Emoji | Type | What it covers |
+|:-----:|------|----------------|
+| 📦 | `new` | Adding new features, files, or capabilities |
+| 🔧 | `update` | Changing existing code, refactoring, improvements |
+| 🗑️ | `remove` | Removing code, files, features, or dependencies |
+| 🔒 | `security` | Security fixes, patches, vulnerability resolutions |
+| ⚙️ | `setup` | Project configs, CI/CD, tooling, build systems |
+| ☕ | `chore` | Maintenance tasks, dependency updates, housekeeping |
+| 🧪 | `test` | Adding, updating, or fixing tests |
+| 📖 | `docs` | Documentation changes and updates |
+| 🚀 | `release` | Version releases and release preparation |
 
 ## Scope
 
-The scope should be the name of the affected component or module (e.g., parser, compiler, api, auth, etc).
+The scope is optional and should be the name of the affected component or module (e.g., api, auth, workflow, scripts, etc).
 
-## Subject
+## Description
 
-The subject contains a succinct description of the change:
+The description contains a succinct description of the change:
 
-- Use the imperative, present tense: "change" not "changed" nor "changes"
-- Don't capitalize the first letter
-- No period (.) at the end
+- Use lowercase for type
+- Use present tense ("add" not "added")
+- No period at the end
+- Keep description under 72 characters
 
-## Body
+## Body (Optional)
 
 The body should include the motivation for the change and contrast this with previous behavior.
 
-## Footer
+## Footer (Optional)
 
 The footer should contain any information about Breaking Changes and is also the place to reference GitHub issues that this commit closes.
 
@@ -60,9 +58,9 @@ Breaking Changes should start with the word `BREAKING CHANGE:` with a space or t
 
 ## Examples
 
-### Feature with scope
+### Adding new features
 ```
-feat(auth): add OAuth2 authentication
+📦 new: user authentication system
 
 Implement OAuth2 authentication flow for third-party login providers.
 Supports Google, GitHub, and Microsoft providers.
@@ -70,47 +68,85 @@ Supports Google, GitHub, and Microsoft providers.
 Closes #123
 ```
 
-### Bug fix
+### Updating existing code
 ```
-fix(parser): handle null values in JSON parsing
+🔧 update(api): improve error handling
 
-Previously, null values would cause a TypeError. Now they are properly
-handled and converted to null in the output.
+Enhanced error handling to provide more detailed error messages
+and proper HTTP status codes for all API endpoints.
 
 Fixes #456
 ```
 
-### Breaking change
+### Removing code or dependencies
 ```
-feat(api): change response format for user endpoints
+🗑️ remove(deps): unused lodash dependency
 
-BREAKING CHANGE: User API responses now return camelCase field names
-instead of snake_case. Update your client code accordingly.
+Removed lodash as it's no longer used after refactoring utility functions.
+```
 
-Before: { user_name: "john" }
-After: { userName: "john" }
+### Security fixes
+```
+🔒 security: patch XSS vulnerability in input validation
 
-Closes #789
+Fixed cross-site scripting vulnerability by properly sanitizing user inputs
+before rendering them in the UI.
+
+BREAKING CHANGE: Input validation now rejects certain special characters
+that were previously allowed.
+```
+
+### Project setup and configuration
+```
+⚙️ setup: add eslint configuration
+
+Added ESLint with recommended rules and project-specific overrides.
+```
+
+### Maintenance and housekeeping
+```
+☕ chore: update npm dependencies
+
+Updated all npm packages to their latest compatible versions.
+```
+
+### Testing
+```
+🧪 test: add unit tests for auth service
+
+Added comprehensive unit tests for authentication service covering
+login, logout, and token validation.
 ```
 
 ### Documentation
 ```
-docs(readme): update installation instructions
+📖 docs: update installation instructions
 
-Add troubleshooting section for common installation issues.
+Added troubleshooting section for common installation issues and
+updated setup steps for Node.js 20.
 ```
 
-### Chore
+### Releases
 ```
-chore(deps): update dependencies to latest versions
+🚀 release: version 1.0.0
+
+First stable release with all core features implemented and tested.
+```
+
+### With scope
+```
+🔧 update(workflow): improve build performance
+
+Optimized build workflow by caching dependencies and running
+tests in parallel.
 ```
 
 ## Benefits
 
+- Visual recognition with emojis makes commit types instantly recognizable
 - Automatically generate CHANGELOGs
-- Automatically determine semantic version bump
+- Clear categorization of changes
 - Communicate the nature of changes to teammates and users
-- Trigger build and publish processes
 - Make it easier for people to contribute by showing a structured history
 
 ## Tools
