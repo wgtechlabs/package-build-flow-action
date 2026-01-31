@@ -8,6 +8,7 @@ Automated NPM package versioning, building, and publishing with intelligent flow
 
 - 🔄 **Intelligent Flow Detection**: Automatically determines build type based on GitHub context
 - 📦 **Dual Registry Support**: Publish to NPM Registry and/or GitHub Packages
+- ✨ **Auto-Scoping**: Automatically scopes packages for GitHub Packages using repository owner
 - 🏷️ **Smart Versioning**: SemVer versioning with pre-release tags
 - 🔒 **Security Scanning**: Built-in npm audit integration
 - 💬 **PR Comments**: Automatic installation instructions in pull requests
@@ -43,6 +44,7 @@ jobs:
           npm-token: ${{ secrets.NPM_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           registry: 'both'
+          # package-scope not needed - auto-scoped for GitHub Packages! ✨
 ```
 
 ## Flow Detection
@@ -113,7 +115,7 @@ Tag: patch
 | `npm-registry-url` | NPM registry URL | `https://registry.npmjs.org` | No |
 | `github-token` | GitHub token for GitHub Packages | `${{ github.token }}` | No |
 | `github-registry-url` | GitHub Packages registry URL | `https://npm.pkg.github.com` | No |
-| `package-scope` | Package scope for GitHub Packages (e.g., `@myorg`) | - | For GitHub Packages |
+| `package-scope` | Package scope for GitHub Packages (e.g., `@myorg`). If not provided, uses the repository owner only when the package name in `package.json` is unscoped; if the package name is already scoped, its existing scope is kept | - | No |
 
 ### Branch Configuration
 
@@ -184,8 +186,41 @@ Tag: patch
 
 ### GitHub Packages Setup
 
-1. Ensure your package.json has a scoped name or provide `package-scope`
-2. Configure the action:
+GitHub Packages requires all packages to be scoped (e.g., `@owner/package-name`). The action provides **automatic scope detection** to make this seamless:
+
+#### 🎯 Automatic Scope Detection
+
+The action automatically scopes your package using this priority order:
+
+1. **Explicit scope from `package-scope` input** → Uses provided scope
+2. **Existing scope in package.json** → Uses scope from package name
+3. **Repository owner** → **Automatically uses `@{repository-owner}`** ✨
+
+This means **most users don't need to configure anything** - the action will automatically scope packages using your repository owner!
+
+#### Scoping Outcomes
+
+| Your package.json | package-scope Input | GitHub Packages Publishes As |
+|-------------------|---------------------|------------------------------|
+| `"name": "mypackage"` | _(empty)_ | `@owner/mypackage` ✨ Auto-scoped! |
+| `"name": "mypackage"` | `@custom` | `@custom/mypackage` |
+| `"name": "@org/mypackage"` | _(any)_ | `@org/mypackage` |
+
+#### Basic Setup (Zero Configuration)
+
+For most cases, you don't need to provide `package-scope`:
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v1
+  with:
+    registry: 'github'
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    # package-scope not needed - auto-scoped as @{owner}!
+```
+
+#### Custom Scope (Optional)
+
+If you want to use a different scope than the repository owner:
 
 ```yaml
 - uses: wgtechlabs/package-build-flow-action@v1
@@ -197,7 +232,7 @@ Tag: patch
 
 ### Dual Registry Publishing
 
-Publish to both NPM and GitHub Packages:
+Publish to both NPM and GitHub Packages. GitHub Packages will use auto-scoping if needed:
 
 ```yaml
 - uses: wgtechlabs/package-build-flow-action@v1
@@ -205,7 +240,18 @@ Publish to both NPM and GitHub Packages:
     registry: 'both'
     npm-token: ${{ secrets.NPM_TOKEN }}
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    package-scope: '@myorg'
+    # package-scope optional - auto-scoped for GitHub Packages
+```
+
+Or with custom scope:
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v1
+  with:
+    registry: 'both'
+    npm-token: ${{ secrets.NPM_TOKEN }}
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    package-scope: '@myorg'  # Use custom scope
 ```
 
 ## Versioning Strategy

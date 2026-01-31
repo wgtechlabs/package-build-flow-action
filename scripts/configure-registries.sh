@@ -65,13 +65,23 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     else
       SCOPE="@${PACKAGE_SCOPE}"
     fi
+    echo "🔧 Using provided scope: $SCOPE"
   else
     # Try to extract scope from package name
     if [[ "$PACKAGE_NAME" == @* ]]; then
       SCOPE=$(echo "$PACKAGE_NAME" | cut -d'/' -f1)
+      echo "📌 Using scope from package.json: $SCOPE"
     else
-      echo "❌ Error: PACKAGE_SCOPE is required for GitHub Packages when package name is not scoped"
-      exit 1
+      # Auto-scope using repository owner
+      echo "ℹ️  Package is unscoped and no scope provided"
+      echo "💡 Auto-scoping enabled: Using repository owner as scope"
+      if [ -z "$GITHUB_REPOSITORY_OWNER" ]; then
+        echo "❌ Error: GITHUB_REPOSITORY_OWNER environment variable not set"
+        exit 1
+      fi
+      SCOPE="@${GITHUB_REPOSITORY_OWNER}"
+      echo "🔧 Scope: $SCOPE (from repository owner: ${GITHUB_REPOSITORY_OWNER})"
+      echo "📌 This is required by GitHub Packages - all packages must be scoped"
     fi
   fi
   

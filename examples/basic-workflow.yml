@@ -29,3 +29,4 @@ jobs:
           npm-token: ${{ secrets.NPM_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           registry: 'both'
+          # package-scope not needed - auto-scoped for GitHub Packages!

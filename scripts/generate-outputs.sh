@@ -41,7 +41,13 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
         GITHUB_PACKAGE_NAME="@${PACKAGE_SCOPE}/${PACKAGE_NAME}"
       fi
     else
-      GITHUB_PACKAGE_NAME="$PACKAGE_NAME"
+      # Auto-scope using repository owner
+      if [ -z "$GITHUB_REPOSITORY_OWNER" ]; then
+        echo "⚠️  Warning: GITHUB_REPOSITORY_OWNER not set, using unscoped name"
+        GITHUB_PACKAGE_NAME="$PACKAGE_NAME"
+      else
+        GITHUB_PACKAGE_NAME="@${GITHUB_REPOSITORY_OWNER}/${PACKAGE_NAME}"
+      fi
     fi
     
     GITHUB_INSTALL="npm install ${GITHUB_PACKAGE_NAME}@${PACKAGE_VERSION}"
