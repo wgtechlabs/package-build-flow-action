@@ -47,7 +47,21 @@ if [ "$ACCESS" != "public" ] && [ "$ACCESS" != "restricted" ]; then
   exit 1
 fi
 
-echo "🔐 Package access level: $ACCESS"
+# npm only supports '--access restricted' for scoped packages (@scope/name)
+if [ "$ACCESS" = "restricted" ]; then
+  case "$PACKAGE_NAME" in
+    @*/*)
+      # Scoped package, restricted access is allowed
+      echo "🔐 Package access level: $ACCESS (scoped package)"
+      ;;
+    *)
+      echo "❌ Error: 'restricted' access is only supported for scoped packages (name must be of the form '@scope/name'). Current package name '$PACKAGE_NAME' is unscoped."
+      exit 1
+      ;;
+  esac
+else
+  echo "🔐 Package access level: $ACCESS"
+fi
 
 # Update package.json version (no git tag)
 echo "📝 Updating package.json version..."
@@ -161,7 +175,12 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
+    # Only add --access flag for scoped packages
+    if [[ "$PACKAGE_NAME" == @* ]]; then
+      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
+    else
+      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
+    fi
     NPM_PUBLISHED="dry-run"
   fi
   
@@ -212,12 +231,23 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
-    NPM_PUBLISHED="true"
-    echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+  # Only add --access flag for scoped packages
+  if [[ "$PACKAGE_NAME" == @* ]]; then
+    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
+      NPM_PUBLISHED="true"
+      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+    else
+      echo "❌ Failed to publish to NPM"
+      NPM_PUBLISHED="false"
+    fi
   else
-    echo "❌ Failed to publish to NPM"
-    NPM_PUBLISHED="false"
+    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"; then
+      NPM_PUBLISHED="true"
+      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+    else
+      echo "❌ Failed to publish to NPM"
+      NPM_PUBLISHED="false"
+    fi
   fi
 fi
 
