@@ -11,6 +11,12 @@ NPM_PUBLISHED="false"
 GITHUB_PUBLISHED="false"
 
 # Get package details
+# Normalize PACKAGE_PATH to absolute path before cd to avoid relative path issues
+if [ ! -f "$PACKAGE_PATH" ]; then
+  echo "❌ Error: package.json not found at '$PACKAGE_PATH'"
+  exit 1
+fi
+PACKAGE_PATH=$(realpath "$PACKAGE_PATH")
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 PACKAGE_DIR=$(dirname "$PACKAGE_PATH")
 
@@ -29,9 +35,71 @@ mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
 
 echo "✅ Version updated to $PACKAGE_VERSION"
 
+# Validate and resolve package manager
+# First, validate the PACKAGE_MANAGER input
+# Treat empty string as 'auto'
+if [ -z "$PACKAGE_MANAGER" ]; then
+  PACKAGE_MANAGER="auto"
+fi
+
+if [ "$PACKAGE_MANAGER" != "auto" ] && [ "$PACKAGE_MANAGER" != "npm" ] && [ "$PACKAGE_MANAGER" != "yarn" ] && [ "$PACKAGE_MANAGER" != "pnpm" ] && [ "$PACKAGE_MANAGER" != "bun" ]; then
+  echo "❌ Error: Invalid package-manager value '$PACKAGE_MANAGER'. Must be 'auto', 'npm', 'yarn', 'pnpm', or 'bun'"
+  exit 1
+fi
+
+# Resolve package manager based on input or auto-detection
+if [ "$PACKAGE_MANAGER" = "auto" ]; then
+  if [ -f "bun.lockb" ]; then
+    PKG_MANAGER="bun"
+  elif [ -f "pnpm-lock.yaml" ]; then
+    PKG_MANAGER="pnpm"
+  elif [ -f "yarn.lock" ]; then
+    PKG_MANAGER="yarn"
+  elif [ -f "package-lock.json" ]; then
+    PKG_MANAGER="npm"
+  else
+    PKG_MANAGER="npm"
+  fi
+else
+  PKG_MANAGER="$PACKAGE_MANAGER"
+fi
+
+# Verify the selected package manager is available
+if [ "$PKG_MANAGER" = "bun" ]; then
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "❌ Error: Bun is selected but 'bun' command is not found. Please install Bun using 'oven-sh/setup-bun@v2' or similar action."
+    exit 1
+  fi
+elif [ "$PKG_MANAGER" = "pnpm" ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "❌ Error: pnpm is selected but 'pnpm' command is not found. Please install pnpm using 'pnpm/action-setup@v2' or similar action."
+    exit 1
+  fi
+elif [ "$PKG_MANAGER" = "yarn" ]; then
+  if ! command -v yarn >/dev/null 2>&1; then
+    echo "❌ Error: Yarn is selected but 'yarn' command is not found. Please install Yarn or use 'actions/setup-node' with appropriate configuration."
+    exit 1
+  fi
+fi
+
+echo "📦 Using package manager: $PKG_MANAGER"
+
 # Install dependencies
 echo "📥 Installing dependencies..."
-if [ -f "package-lock.json" ]; then
+if [ "$PKG_MANAGER" = "bun" ]; then
+  bun install --frozen-lockfile
+elif [ "$PKG_MANAGER" = "pnpm" ]; then
+  pnpm install --frozen-lockfile
+elif [ "$PKG_MANAGER" = "yarn" ]; then
+  # Yarn v1 uses --frozen-lockfile, Yarn v2+ uses --immutable
+  # Check major version number
+  YARN_MAJOR_VERSION=$(yarn --version | cut -d. -f1)
+  if [ "$YARN_MAJOR_VERSION" -ge 2 ]; then
+    yarn install --immutable
+  else
+    yarn install --frozen-lockfile
+  fi
+elif [ -f "package-lock.json" ]; then
   npm ci
 else
   npm install
@@ -42,8 +110,8 @@ echo "✅ Dependencies installed"
 # Run build script if defined
 if [ -n "$BUILD_SCRIPT" ]; then
   if jq -e ".scripts[\"$BUILD_SCRIPT\"]" "$PACKAGE_PATH" > /dev/null 2>&1; then
-    echo "🔨 Running build script: npm run $BUILD_SCRIPT"
-    npm run "$BUILD_SCRIPT"
+    echo "🔨 Running build script: $PKG_MANAGER run $BUILD_SCRIPT"
+    "$PKG_MANAGER" run "$BUILD_SCRIPT"
     echo "✅ Build completed"
   else
     echo "⚠️  Build script '$BUILD_SCRIPT' not found in package.json, skipping"
@@ -53,7 +121,9 @@ fi
 # Run tests if defined
 if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   echo "🧪 Running tests..."
-  npm test || echo "⚠️  Tests failed but continuing..."
+  # Use 'run test' for consistent behavior across npm and Bun
+  # This ensures we run the package.json script, not Bun's built-in test runner
+  "$PKG_MANAGER" run test || echo "⚠️  Tests failed but continuing..."
 fi
 
 # Check if publishing is enabled

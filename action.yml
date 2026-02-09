@@ -54,6 +54,11 @@ inputs:
     required: false
     default: 'build'
   
+  package-manager:
+    description: 'Package manager to use: npm, yarn, pnpm, bun, or auto (auto-detects from lockfile)'
+    required: false
+    default: 'auto'
+  
   version-prefix:
     description: 'Prefix for version tags'
     required: false
@@ -181,6 +186,7 @@ runs:
         NPM_TAG: ${{ steps.detect-flow.outputs.npm-tag }}
         PACKAGE_PATH: ${{ inputs.package-path }}
         BUILD_SCRIPT: ${{ inputs.build-script }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
         PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
         DRY_RUN: ${{ inputs.dry-run }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
