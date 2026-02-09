@@ -87,8 +87,9 @@ elif [ "$PKG_MANAGER" = "pnpm" ]; then
   pnpm install --frozen-lockfile
 elif [ "$PKG_MANAGER" = "yarn" ]; then
   # Yarn v1 uses --frozen-lockfile, Yarn v2+ uses --immutable
-  # Try --immutable first (Yarn v2+), fall back to --frozen-lockfile (Yarn v1)
-  if yarn --version | grep -q "^[2-9]"; then
+  # Check major version number
+  YARN_MAJOR_VERSION=$(yarn --version | cut -d. -f1)
+  if [ "$YARN_MAJOR_VERSION" -ge 2 ]; then
     yarn install --immutable
   else
     yarn install --frozen-lockfile
