@@ -19,6 +19,12 @@ if [ "$EVENT_NAME" = "pull_request" ]; then
   PR_BASE=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.base.ref')
   PR_HEAD=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.head.ref')
   echo "📋 PR detected: $PR_HEAD -> $PR_BASE"
+elif [ "$EVENT_NAME" = "release" ]; then
+  RELEASE_TAG=$(echo "$GITHUB_CONTEXT" | jq -r '.event.release.tag_name')
+  RELEASE_PRERELEASE=$(echo "$GITHUB_CONTEXT" | jq -r '.event.release.prerelease')
+  echo "🚀 Release detected: tag=$RELEASE_TAG prerelease=$RELEASE_PRERELEASE"
+  PR_BASE=""
+  PR_HEAD=""
 else
   PR_BASE=""
   PR_HEAD=""
@@ -44,12 +50,57 @@ increment_patch() {
   echo "$MAJOR.$MINOR.$((PATCH + 1))"
 }
 
+# Function to extract prerelease tag from version (e.g., "beta" from "1.0.0-beta.1")
+extract_prerelease_tag() {
+  local version=$1
+  # Match semver format with prerelease identifier: x.y.z<identifier>[.<identifier>][+build]
+  # Capture only the first prerelease identifier segment (alphanumerics and hyphens)
+  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z-]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo ""
+  fi
+}
+
 # Detect build flow type
 BUILD_FLOW_TYPE=""
 PACKAGE_VERSION=""
 NPM_TAG=""
 
-if [ "$EVENT_NAME" = "pull_request" ]; then
+if [ "$EVENT_NAME" = "release" ]; then
+  # GitHub Release event
+  BUILD_FLOW_TYPE="release"
+  
+  # Extract version from tag
+  # Remove leading 'v' only for semver-style tags like v1.2.3; otherwise keep tag as-is
+  if [[ "$RELEASE_TAG" =~ ^v[0-9] ]]; then
+    RELEASE_VERSION="${RELEASE_TAG#v}"
+  else
+    RELEASE_VERSION="$RELEASE_TAG"
+  fi
+  PACKAGE_VERSION="$RELEASE_VERSION"
+  
+  # Determine npm tag based on version and prerelease status
+  if [ "$RELEASE_PRERELEASE" = "true" ]; then
+    # For pre-releases, extract the prerelease identifier (e.g., "beta" from "1.0.0-beta.1")
+    PRERELEASE_TAG=$(extract_prerelease_tag "$RELEASE_VERSION")
+    if [ -n "$PRERELEASE_TAG" ]; then
+      NPM_TAG="$PRERELEASE_TAG"
+      echo "🎭 Flow: Pre-release with tag '$PRERELEASE_TAG'"
+    else
+      # No prerelease identifier found, use 'prerelease' as fallback
+      NPM_TAG="prerelease"
+      echo "🎭 Flow: Pre-release (generic)"
+    fi
+  else
+    # Standard release uses 'latest' tag
+    NPM_TAG="latest"
+    echo "🎉 Flow: Production release"
+  fi
+  
+  echo "📦 Release Version: $PACKAGE_VERSION"
+  echo "🏷️  NPM Tag: $NPM_TAG"
+elif [ "$EVENT_NAME" = "pull_request" ]; then
   if [ "$PR_BASE" = "$DEV_BRANCH" ]; then
     # PR targeting dev branch
     BUILD_FLOW_TYPE="pr"
@@ -80,13 +131,13 @@ if [ "$EVENT_NAME" = "pull_request" ]; then
   fi
 elif [ "$EVENT_NAME" = "push" ]; then
   if [ "$REF_NAME" = "$MAIN_BRANCH" ]; then
-    # Push to main branch - staging/RC
+    # Push to main branch - staging
     BUILD_FLOW_TYPE="staging"
-    # Get RC number (use last 6 digits of timestamp)
-    RC_NUMBER=$(date +%s)
-    RC_NUMBER=${RC_NUMBER: -6}
-    PACKAGE_VERSION="${BASE_VERSION}-rc.${RC_NUMBER}"
-    NPM_TAG="rc"
+    # Get staging number (use last 6 digits of timestamp)
+    STAGING_NUMBER=$(date +%s)
+    STAGING_NUMBER=${STAGING_NUMBER: -6}
+    PACKAGE_VERSION="${BASE_VERSION}-staging.${STAGING_NUMBER}"
+    NPM_TAG="staging"
     echo "🎯 Flow: Staging release (push to main)"
   elif [ "$REF_NAME" = "$DEV_BRANCH" ]; then
     # Push to dev branch

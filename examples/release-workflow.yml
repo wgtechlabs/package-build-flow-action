@@ -21,18 +21,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
       
-      - name: Extract Release Version
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          VERSION=${VERSION#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Release version: $VERSION"
-      
-      - name: Update Package Version
-        run: |
-          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
-      
       - name: Build and Publish Release
         id: build
         uses: wgtechlabs/package-build-flow-action@v1
@@ -58,6 +46,7 @@ jobs:
         run: |
           echo "✅ Release published successfully!"
           echo "📦 Version: ${{ steps.build.outputs.package-version }}"
+          echo "🏷️  Flow Type: ${{ steps.build.outputs.build-flow-type }}"
           echo "📤 NPM Published: ${{ steps.build.outputs.npm-published }}"
           echo "📤 GitHub Published: ${{ steps.build.outputs.github-published }}"
           echo ""
@@ -67,18 +56,18 @@ jobs:
       - name: Create Release Notes
         run: |
           cat << EOF > release-notes.md
-          # Release ${{ steps.version.outputs.version }}
+          # Release ${{ steps.build.outputs.package-version }}
           
           ## Installation
           
           ### NPM Registry
           \`\`\`bash
-          npm install mypackage@${{ steps.version.outputs.version }}
+          npm install mypackage@${{ steps.build.outputs.package-version }}
           \`\`\`
           
           ### GitHub Packages
           \`\`\`bash
-          npm install @myorg/mypackage@${{ steps.version.outputs.version }}
+          npm install @myorg/mypackage@${{ steps.build.outputs.package-version }}
           \`\`\`
           
           ## Security
