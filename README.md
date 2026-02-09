@@ -81,7 +81,7 @@ Version: 1.0.0-beta.1
 NPM Tag: beta
 ```
 
-#### GitHub Release (Pre-release with staging)
+#### GitHub Release (Pre-release - staging tag)
 ```
 Event: release
 Release Type: Pre-release

@@ -53,7 +53,8 @@ increment_patch() {
 # Function to extract prerelease tag from version (e.g., "beta" from "1.0.0-beta.1")
 extract_prerelease_tag() {
   local version=$1
-  if [[ "$version" =~ -([a-zA-Z]+) ]]; then
+  # Match semver format with prerelease identifier: x.y.z-identifier.number
+  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+) ]]; then
     echo "${BASH_REMATCH[1]}"
   else
     echo ""
