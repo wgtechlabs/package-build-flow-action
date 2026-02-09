@@ -36,6 +36,19 @@ if [ "$PWD" != "$WORKSPACE_ROOT" ] && [ -f "$WORKSPACE_ROOT/.npmrc" ]; then
   echo "📋 Copied .npmrc from workspace root to package directory"
 fi
 
+# Validate and set access level
+# Treat empty string as 'public' (default)
+if [ -z "$ACCESS" ]; then
+  ACCESS="public"
+fi
+
+if [ "$ACCESS" != "public" ] && [ "$ACCESS" != "restricted" ]; then
+  echo "❌ Error: Invalid access value '$ACCESS'. Must be 'public' or 'restricted'"
+  exit 1
+fi
+
+echo "🔐 Package access level: $ACCESS"
+
 # Update package.json version (no git tag)
 echo "📝 Updating package.json version..."
 jq --arg version "$PACKAGE_VERSION" '.version = $version' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
@@ -148,7 +161,7 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
+    npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
     NPM_PUBLISHED="dry-run"
   fi
   
@@ -180,7 +193,7 @@ if [ "$DRY_RUN" = "true" ]; then
       echo "📝 Scoped package name: $SCOPED_NAME"
     fi
     
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL"
+    npm publish --dry-run --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"
     GITHUB_PUBLISHED="dry-run"
     
     # Restore original name if changed
@@ -199,7 +212,7 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"; then
+  if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
     NPM_PUBLISHED="true"
     echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
   else
@@ -240,7 +253,7 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     NEEDS_RESTORE=true
   fi
   
-  if npm publish --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL"; then
+  if npm publish --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"; then
     GITHUB_PUBLISHED="true"
     PUBLISHED_NAME=$(jq -r '.name' "$PACKAGE_PATH")
     echo "✅ Published to GitHub Packages: $PUBLISHED_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"

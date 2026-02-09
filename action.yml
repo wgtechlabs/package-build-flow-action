@@ -100,6 +100,11 @@ inputs:
     description: 'Perform dry run without publishing'
     required: false
     default: 'false'
+  
+  access:
+    description: 'Package access level for scoped packages: public or restricted'
+    required: false
+    default: 'public'
 
 outputs:
   # Version Outputs
@@ -193,6 +198,7 @@ runs:
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        ACCESS: ${{ inputs.access }}
     
     - name: Run Security Audit
       id: audit
