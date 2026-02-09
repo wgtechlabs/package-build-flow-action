@@ -175,8 +175,8 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    # Only add --access flag for scoped packages
-    if [[ "$PACKAGE_NAME" == @* ]]; then
+    # Only add --access flag for scoped packages (@scope/name)
+    if [[ "$PACKAGE_NAME" == @*/* ]]; then
       npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
     else
       npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
@@ -231,8 +231,8 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  # Only add --access flag for scoped packages
-  if [[ "$PACKAGE_NAME" == @* ]]; then
+  # Only add --access flag for scoped packages (@scope/name)
+  if [[ "$PACKAGE_NAME" == @*/* ]]; then
     if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
       NPM_PUBLISHED="true"
       echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
