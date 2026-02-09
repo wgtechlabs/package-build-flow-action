@@ -60,7 +60,7 @@ echo "✅ Dependencies installed"
 if [ -n "$BUILD_SCRIPT" ]; then
   if jq -e ".scripts[\"$BUILD_SCRIPT\"]" "$PACKAGE_PATH" > /dev/null 2>&1; then
     echo "🔨 Running build script: $PKG_MANAGER run $BUILD_SCRIPT"
-    $PKG_MANAGER run "$BUILD_SCRIPT"
+    "$PKG_MANAGER" run "$BUILD_SCRIPT"
     echo "✅ Build completed"
   else
     echo "⚠️  Build script '$BUILD_SCRIPT' not found in package.json, skipping"
@@ -70,7 +70,7 @@ fi
 # Run tests if defined
 if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   echo "🧪 Running tests..."
-  $PKG_MANAGER test || echo "⚠️  Tests failed but continuing..."
+  "$PKG_MANAGER" test || echo "⚠️  Tests failed but continuing..."
 fi
 
 # Check if publishing is enabled
