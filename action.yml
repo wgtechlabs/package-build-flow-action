@@ -55,7 +55,7 @@ inputs:
     default: 'build'
   
   package-manager:
-    description: 'Package manager to use: npm, bun, or auto (auto-detects from lockfile)'
+    description: 'Package manager to use: npm, yarn, pnpm, bun, or auto (auto-detects from lockfile)'
     required: false
     default: 'auto'
   

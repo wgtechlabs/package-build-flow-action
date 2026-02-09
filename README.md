@@ -130,7 +130,7 @@ Tag: patch
 |-------|-------------|---------|----------|
 | `package-path` | Path to package.json | `./package.json` | No |
 | `build-script` | NPM script to run before publishing | `build` | No |
-| `package-manager` | Package manager to use: `npm`, `bun`, or `auto` (auto-detects from lockfile) | `auto` | No |
+| `package-manager` | Package manager to use: `npm`, `yarn`, `pnpm`, `bun`, or `auto` (auto-detects from lockfile) | `auto` | No |
 | `version-prefix` | Prefix for version tags | - | No |
 
 ### Security Configuration
@@ -181,8 +181,10 @@ The action supports multiple package managers with automatic detection:
 When `package-manager: 'auto'` (default), the action automatically selects the package manager based on lockfile presence:
 
 1. If `bun.lockb` exists → Uses **Bun**
-2. If `package-lock.json` exists → Uses **npm**
-3. Neither → Falls back to **npm**
+2. If `pnpm-lock.yaml` exists → Uses **pnpm**
+3. If `yarn.lock` exists → Uses **Yarn**
+4. If `package-lock.json` exists → Uses **npm**
+5. Neither → Falls back to **npm**
 
 This ensures lockfile consistency and preserves backward compatibility.
 
@@ -193,11 +195,13 @@ Explicitly specify the package manager:
 ```yaml
 - uses: wgtechlabs/package-build-flow-action@v1
   with:
-    package-manager: 'bun'  # or 'npm'
+    package-manager: 'pnpm'  # or 'npm', 'yarn', 'bun'
     npm-token: ${{ secrets.NPM_TOKEN }}
 ```
 
-#### Bun Setup Example
+#### Package Manager Examples
+
+##### Bun
 
 For Bun-based projects, install both Node.js (for publishing) and Bun (for building):
 
@@ -220,7 +224,51 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Note:** Publishing always uses npm regardless of the package manager, as Bun doesn't have a native publish command.
+##### pnpm
+
+For pnpm-based projects:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - uses: pnpm/action-setup@v2
+    with:
+      version: 8
+
+  - uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+      cache: 'pnpm'
+
+  - uses: wgtechlabs/package-build-flow-action@v1
+    with:
+      package-manager: 'pnpm'  # or 'auto' to detect from pnpm-lock.yaml
+      npm-token: ${{ secrets.NPM_TOKEN }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+##### Yarn
+
+For Yarn-based projects:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+      cache: 'yarn'
+
+  - uses: wgtechlabs/package-build-flow-action@v1
+    with:
+      package-manager: 'yarn'  # or 'auto' to detect from yarn.lock
+      npm-token: ${{ secrets.NPM_TOKEN }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Note:** Publishing always uses npm regardless of the package manager. Bun, pnpm, and Yarn don't have native npm registry publish commands, so npm is used for the final publish step.
 
 ### NPM Registry Setup
 
