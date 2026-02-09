@@ -268,7 +268,7 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Note:** Publishing always uses npm regardless of the package manager. Bun, pnpm, and Yarn don't have native npm registry publish commands, so npm is used for the final publish step.
+**Note:** This action always uses the npm CLI for the final publish step, regardless of the selected package manager. While Bun, pnpm, and Yarn can publish to the npm registry, this action standardizes on npm for publishing to ensure consistent behavior across environments.
 
 ### NPM Registry Setup
 

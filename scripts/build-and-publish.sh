@@ -37,7 +37,12 @@ echo "✅ Version updated to $PACKAGE_VERSION"
 
 # Validate and resolve package manager
 # First, validate the PACKAGE_MANAGER input
-if [ -n "$PACKAGE_MANAGER" ] && [ "$PACKAGE_MANAGER" != "auto" ] && [ "$PACKAGE_MANAGER" != "npm" ] && [ "$PACKAGE_MANAGER" != "yarn" ] && [ "$PACKAGE_MANAGER" != "pnpm" ] && [ "$PACKAGE_MANAGER" != "bun" ]; then
+# Treat empty string as 'auto'
+if [ -z "$PACKAGE_MANAGER" ]; then
+  PACKAGE_MANAGER="auto"
+fi
+
+if [ "$PACKAGE_MANAGER" != "auto" ] && [ "$PACKAGE_MANAGER" != "npm" ] && [ "$PACKAGE_MANAGER" != "yarn" ] && [ "$PACKAGE_MANAGER" != "pnpm" ] && [ "$PACKAGE_MANAGER" != "bun" ]; then
   echo "❌ Error: Invalid package-manager value '$PACKAGE_MANAGER'. Must be 'auto', 'npm', 'yarn', 'pnpm', or 'bun'"
   exit 1
 fi
