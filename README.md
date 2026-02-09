@@ -53,13 +53,42 @@ The action automatically detects the build flow based on GitHub context:
 
 | Flow Type | Trigger | Version Format | NPM Tag | Description |
 |-----------|---------|----------------|---------|-------------|
+| **release** | GitHub Release (standard) | `{tag}` | `latest` | Production release from GitHub release event |
+| **release** | GitHub Release (pre-release) | `{tag}` | `{prerelease-id}` | Pre-release from GitHub release event (e.g., beta, alpha) |
 | **pr** | PR → dev branch | `{base}-pr.{sha}` | `pr` | Pre-release for testing PR changes |
 | **dev** | PR dev→main OR push to dev | `{base}-dev.{sha}` | `dev` | Development version for integration testing |
 | **patch** | PR → main (not from dev) | `{base+1}-patch.{sha}` | `patch` | Patch version for hotfixes |
-| **staging** | Push to main | `{base}-rc.{number}` | `rc` | Release candidate for final validation |
+| **staging** | Push to main | `{base}-staging.{number}` | `staging` | Staging version for final validation before release |
 | **wip** | Other branches | `{base}-wip.{sha}` | `wip` | Experimental build from feature branch |
 
 ### Flow Examples
+
+#### GitHub Release (Production)
+```
+Event: release
+Release Type: Standard Release
+Tag: v1.0.0
+Version: 1.0.0
+NPM Tag: latest
+```
+
+#### GitHub Release (Pre-release)
+```
+Event: release
+Release Type: Pre-release
+Tag: v1.0.0-beta.1
+Version: 1.0.0-beta.1
+NPM Tag: beta
+```
+
+#### GitHub Release (Pre-release with staging)
+```
+Event: release
+Release Type: Pre-release
+Tag: v1.2.3-staging.123456
+Version: 1.2.3-staging.123456
+NPM Tag: staging
+```
 
 #### PR to Dev Branch
 ```
@@ -87,12 +116,12 @@ Version: 1.2.3-dev.abc1234
 Tag: dev
 ```
 
-#### Push to Main (Staging/RC)
+#### Push to Main (Staging)
 ```
 Event: push
 Branch: main
-Version: 1.2.3-rc.123456
-Tag: rc
+Version: 1.2.3-staging.123456
+Tag: staging
 ```
 
 #### Patch PR to Main
@@ -502,6 +531,8 @@ jobs:
 
 ### Production Release Workflow
 
+The action automatically detects GitHub release events and publishes packages with the correct version from the release tag. No manual version updates needed!
+
 ```yaml
 name: Production Release
 
@@ -523,12 +554,7 @@ jobs:
         with:
           node-version: '20'
       
-      # Update version in package.json to release version
-      - name: Update Version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          npm version $VERSION --no-git-tag-version
-      
+      # No manual version update needed - automatically uses release tag!
       - uses: wgtechlabs/package-build-flow-action@v1
         with:
           registry: 'both'
@@ -538,6 +564,11 @@ jobs:
           audit-enabled: 'true'
           fail-on-audit: 'true'
 ```
+
+**How it works:**
+- **Standard Release (v1.0.0)**: Publishes `1.0.0` with `latest` npm tag
+- **Pre-release (v1.0.0-beta.1)**: Publishes `1.0.0-beta.1` with `beta` npm tag
+- **Staging Release (v1.2.3-staging.123)**: Publishes `1.2.3-staging.123` with `staging` npm tag
 
 ### Dry Run Mode
 

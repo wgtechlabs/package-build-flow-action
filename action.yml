@@ -112,7 +112,7 @@ outputs:
     value: ${{ steps.generate-outputs.outputs.registry-urls }}
   
   build-flow-type:
-    description: 'Detected flow type (pr, dev, patch, staging, wip)'
+    description: 'Detected flow type (release, pr, dev, patch, staging, wip)'
     value: ${{ steps.detect-flow.outputs.build-flow-type }}
   
   short-sha:
