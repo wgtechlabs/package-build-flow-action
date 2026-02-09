@@ -56,8 +56,8 @@ The action automatically detects the build flow based on GitHub context:
 
 | Flow Type | Trigger | Version Format | NPM Tag | Description |
 |-----------|---------|----------------|---------|-------------|
-| **release** | GitHub Release (standard) | `{tag}` | `latest` | Production release from GitHub release event |
-| **release** | GitHub Release (pre-release) | `{tag}` | `{prerelease-id}` | Pre-release from GitHub release event (e.g., beta, alpha) |
+| **release** | GitHub Release (standard) | `{tag}` (with leading `v` stripped, e.g., `v1.0.0` → `1.0.0`) | `latest` | Production release from GitHub release event |
+| **release** | GitHub Release (pre-release) | `{tag}` (with leading `v` stripped) | `{prerelease-id}` (or `prerelease` if no identifier is detected) | Pre-release from GitHub release event (e.g., beta, alpha) |
 | **pr** | PR → dev branch | `{base}-pr.{sha}` | `pr` | Pre-release for testing PR changes |
 | **dev** | PR dev→main OR push to dev | `{base}-dev.{sha}` | `dev` | Development version for integration testing |
 | **patch** | PR → main (not from dev) | `{base+1}-patch.{sha}` | `patch` | Patch version for hotfixes |

@@ -53,8 +53,9 @@ increment_patch() {
 # Function to extract prerelease tag from version (e.g., "beta" from "1.0.0-beta.1")
 extract_prerelease_tag() {
   local version=$1
-  # Match semver format with prerelease identifier: x.y.z-identifier.number
-  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+) ]]; then
+  # Match semver format with prerelease identifier: x.y.z<identifier>[.<identifier>][+build]
+  # Capture only the first prerelease identifier segment (alphanumerics and hyphens)
+  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z-]+) ]]; then
     echo "${BASH_REMATCH[1]}"
   else
     echo ""
@@ -70,8 +71,13 @@ if [ "$EVENT_NAME" = "release" ]; then
   # GitHub Release event
   BUILD_FLOW_TYPE="release"
   
-  # Extract version from tag (remove 'v' prefix if present)
-  RELEASE_VERSION="${RELEASE_TAG#v}"
+  # Extract version from tag
+  # Remove leading 'v' only for semver-style tags like v1.2.3; otherwise keep tag as-is
+  if [[ "$RELEASE_TAG" =~ ^v[0-9] ]]; then
+    RELEASE_VERSION="${RELEASE_TAG#v}"
+  else
+    RELEASE_VERSION="$RELEASE_TAG"
+  fi
   PACKAGE_VERSION="$RELEASE_VERSION"
   
   # Determine npm tag based on version and prerelease status
