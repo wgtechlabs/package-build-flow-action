@@ -12,6 +12,10 @@ GITHUB_PUBLISHED="false"
 
 # Get package details
 # Normalize PACKAGE_PATH to absolute path before cd to avoid relative path issues
+if [ ! -f "$PACKAGE_PATH" ]; then
+  echo "❌ Error: package.json not found at '$PACKAGE_PATH'"
+  exit 1
+fi
 PACKAGE_PATH=$(realpath "$PACKAGE_PATH")
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 PACKAGE_DIR=$(dirname "$PACKAGE_PATH")
