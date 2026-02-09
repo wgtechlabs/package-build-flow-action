@@ -73,5 +73,5 @@ echo "  Registry URLs: $REGISTRY_URLS"
 echo ""
 
 # Set GitHub Actions outputs
-echo "package-version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
-echo "registry-urls=$REGISTRY_URLS" >> $GITHUB_OUTPUT
+echo "package-version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+echo "registry-urls=$REGISTRY_URLS" >> "$GITHUB_OUTPUT"

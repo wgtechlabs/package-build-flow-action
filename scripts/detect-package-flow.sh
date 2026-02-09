@@ -160,9 +160,10 @@ else
   echo "❓ Flow: Unknown event type"
 fi
 
-# Apply version prefix if specified
+# Version prefix is not applied to the package version because it
+# produces invalid semver (e.g., v1.0.0) that npm rejects.
 if [ -n "$VERSION_PREFIX" ]; then
-  PACKAGE_VERSION="${VERSION_PREFIX}${PACKAGE_VERSION}"
+  echo "⚠️  version-prefix ('$VERSION_PREFIX') is ignored — npm requires valid semver versions"
 fi
 
 echo ""
@@ -174,7 +175,7 @@ echo "  Short SHA: $SHORT_SHA"
 echo ""
 
 # Set GitHub Actions outputs
-echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
-echo "npm-tag=$NPM_TAG" >> $GITHUB_OUTPUT
-echo "build-flow-type=$BUILD_FLOW_TYPE" >> $GITHUB_OUTPUT
-echo "short-sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+echo "npm-tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
+echo "build-flow-type=$BUILD_FLOW_TYPE" >> "$GITHUB_OUTPUT"
+echo "short-sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"

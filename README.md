@@ -416,7 +416,7 @@ npm install mypackage@latest
 - **PR to dev**: Uses base version with `-pr.{sha}` suffix
 - **Dev branch**: Uses base version with `-dev.{sha}` suffix
 - **Patch PR**: Increments patch version with `-patch.{sha}` suffix
-- **Staging (main)**: Uses base version with `-rc.{number}` suffix
+- **Staging (main)**: Uses base version with `-staging.{number}` suffix
 
 ## Security Scanning
 

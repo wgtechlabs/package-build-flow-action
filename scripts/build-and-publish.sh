@@ -26,7 +26,15 @@ echo "🔖 Version: $PACKAGE_VERSION"
 echo "🏷️  NPM Tag: $NPM_TAG"
 
 # Change to package directory
+WORKSPACE_ROOT="$PWD"
 cd "$PACKAGE_DIR"
+
+# Ensure .npmrc is available in the package directory
+# (configure-registries.sh writes it to the workspace root)
+if [ "$PWD" != "$WORKSPACE_ROOT" ] && [ -f "$WORKSPACE_ROOT/.npmrc" ]; then
+  cp "$WORKSPACE_ROOT/.npmrc" ".npmrc"
+  echo "📋 Copied .npmrc from workspace root to package directory"
+fi
 
 # Update package.json version (no git tag)
 echo "📝 Updating package.json version..."
@@ -129,8 +137,8 @@ fi
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
-  echo "npm-published=$NPM_PUBLISHED" >> $GITHUB_OUTPUT
-  echo "github-published=$GITHUB_PUBLISHED" >> $GITHUB_OUTPUT
+  echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
+  echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -182,8 +190,8 @@ if [ "$DRY_RUN" = "true" ]; then
     fi
   fi
   
-  echo "npm-published=$NPM_PUBLISHED" >> $GITHUB_OUTPUT
-  echo "github-published=$GITHUB_PUBLISHED" >> $GITHUB_OUTPUT
+  echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
+  echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -256,5 +264,5 @@ echo "  GitHub Published: $GITHUB_PUBLISHED"
 echo ""
 
 # Set outputs
-echo "npm-published=$NPM_PUBLISHED" >> $GITHUB_OUTPUT
-echo "github-published=$GITHUB_PUBLISHED" >> $GITHUB_OUTPUT
+echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
+echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
