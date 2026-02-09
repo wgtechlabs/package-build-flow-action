@@ -40,7 +40,13 @@ if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   
   # Configure NPM authentication
   echo "//${NPM_REGISTRY_HOST}/:_authToken=${NPM_TOKEN}" >> "$NPMRC_FILE"
-  echo "registry=${NPM_REGISTRY_URL}" >> "$NPMRC_FILE"
+  
+  # Only set global registry when publishing to NPM alone.
+  # When REGISTRY=both, omit this line so the scoped registry for GitHub
+  # Packages does not conflict with the --registry flag during npm publish.
+  if [ "$REGISTRY" = "npm" ]; then
+    echo "registry=${NPM_REGISTRY_URL}" >> "$NPMRC_FILE"
+  fi
   
   echo "✅ NPM registry configured"
 fi
@@ -87,7 +93,13 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
   
   # Configure GitHub Packages authentication
   echo "//${GITHUB_REGISTRY_HOST}/:_authToken=${GITHUB_TOKEN}" >> "$NPMRC_FILE"
-  echo "${SCOPE}:registry=${GITHUB_REGISTRY_URL}" >> "$NPMRC_FILE"
+  
+  # Only set scoped registry when publishing to GitHub alone.
+  # When REGISTRY=both, omit this line so it does not override the
+  # --registry flag during the NPM publish step for scoped packages.
+  if [ "$REGISTRY" = "github" ]; then
+    echo "${SCOPE}:registry=${GITHUB_REGISTRY_URL}" >> "$NPMRC_FILE"
+  fi
   
   echo "✅ GitHub Packages configured (scope: $SCOPE)"
 fi
