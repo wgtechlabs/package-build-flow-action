@@ -11,6 +11,8 @@ NPM_PUBLISHED="false"
 GITHUB_PUBLISHED="false"
 
 # Get package details
+# Normalize PACKAGE_PATH to absolute path before cd to avoid relative path issues
+PACKAGE_PATH=$(realpath "$PACKAGE_PATH")
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 PACKAGE_DIR=$(dirname "$PACKAGE_PATH")
 
@@ -29,7 +31,14 @@ mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
 
 echo "✅ Version updated to $PACKAGE_VERSION"
 
-# Resolve package manager
+# Validate and resolve package manager
+# First, validate the PACKAGE_MANAGER input
+if [ -n "$PACKAGE_MANAGER" ] && [ "$PACKAGE_MANAGER" != "auto" ] && [ "$PACKAGE_MANAGER" != "npm" ] && [ "$PACKAGE_MANAGER" != "bun" ]; then
+  echo "❌ Error: Invalid package-manager value '$PACKAGE_MANAGER'. Must be 'auto', 'npm', or 'bun'"
+  exit 1
+fi
+
+# Resolve package manager based on input or auto-detection
 if [ "$PACKAGE_MANAGER" = "auto" ]; then
   if [ -f "bun.lockb" ]; then
     PKG_MANAGER="bun"
@@ -40,6 +49,14 @@ if [ "$PACKAGE_MANAGER" = "auto" ]; then
   fi
 else
   PKG_MANAGER="$PACKAGE_MANAGER"
+fi
+
+# Verify the selected package manager is available
+if [ "$PKG_MANAGER" = "bun" ]; then
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "❌ Error: Bun is selected but 'bun' command is not found. Please install Bun using 'oven-sh/setup-bun@v2' or similar action."
+    exit 1
+  fi
 fi
 
 echo "📦 Using package manager: $PKG_MANAGER"
@@ -70,7 +87,9 @@ fi
 # Run tests if defined
 if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   echo "🧪 Running tests..."
-  "$PKG_MANAGER" test || echo "⚠️  Tests failed but continuing..."
+  # Use 'run test' for consistent behavior across npm and Bun
+  # This ensures we run the package.json script, not Bun's built-in test runner
+  "$PKG_MANAGER" run test || echo "⚠️  Tests failed but continuing..."
 fi
 
 # Check if publishing is enabled
