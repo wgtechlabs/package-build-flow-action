@@ -29,9 +29,26 @@ mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
 
 echo "✅ Version updated to $PACKAGE_VERSION"
 
+# Resolve package manager
+if [ "$PACKAGE_MANAGER" = "auto" ]; then
+  if [ -f "bun.lockb" ]; then
+    PKG_MANAGER="bun"
+  elif [ -f "package-lock.json" ]; then
+    PKG_MANAGER="npm"
+  else
+    PKG_MANAGER="npm"
+  fi
+else
+  PKG_MANAGER="$PACKAGE_MANAGER"
+fi
+
+echo "📦 Using package manager: $PKG_MANAGER"
+
 # Install dependencies
 echo "📥 Installing dependencies..."
-if [ -f "package-lock.json" ]; then
+if [ "$PKG_MANAGER" = "bun" ]; then
+  bun install --frozen-lockfile
+elif [ -f "package-lock.json" ]; then
   npm ci
 else
   npm install
@@ -42,8 +59,8 @@ echo "✅ Dependencies installed"
 # Run build script if defined
 if [ -n "$BUILD_SCRIPT" ]; then
   if jq -e ".scripts[\"$BUILD_SCRIPT\"]" "$PACKAGE_PATH" > /dev/null 2>&1; then
-    echo "🔨 Running build script: npm run $BUILD_SCRIPT"
-    npm run "$BUILD_SCRIPT"
+    echo "🔨 Running build script: $PKG_MANAGER run $BUILD_SCRIPT"
+    $PKG_MANAGER run "$BUILD_SCRIPT"
     echo "✅ Build completed"
   else
     echo "⚠️  Build script '$BUILD_SCRIPT' not found in package.json, skipping"
@@ -53,7 +70,7 @@ fi
 # Run tests if defined
 if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   echo "🧪 Running tests..."
-  npm test || echo "⚠️  Tests failed but continuing..."
+  $PKG_MANAGER test || echo "⚠️  Tests failed but continuing..."
 fi
 
 # Check if publishing is enabled

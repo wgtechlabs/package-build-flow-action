@@ -130,6 +130,7 @@ Tag: patch
 |-------|-------------|---------|----------|
 | `package-path` | Path to package.json | `./package.json` | No |
 | `build-script` | NPM script to run before publishing | `build` | No |
+| `package-manager` | Package manager to use: `npm`, `bun`, or `auto` (auto-detects from lockfile) | `auto` | No |
 | `version-prefix` | Prefix for version tags | - | No |
 
 ### Security Configuration
@@ -170,6 +171,56 @@ Tag: patch
 | `high-vulnerabilities` | High vulnerabilities count |
 
 ## Configuration Guide
+
+### Package Manager Selection
+
+The action supports multiple package managers with automatic detection:
+
+#### Auto-Detection (Default)
+
+When `package-manager: 'auto'` (default), the action automatically selects the package manager based on lockfile presence:
+
+1. If `bun.lockb` exists → Uses **Bun**
+2. If `package-lock.json` exists → Uses **npm**
+3. Neither → Falls back to **npm**
+
+This ensures lockfile consistency and preserves backward compatibility.
+
+#### Manual Selection
+
+Explicitly specify the package manager:
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v1
+  with:
+    package-manager: 'bun'  # or 'npm'
+    npm-token: ${{ secrets.NPM_TOKEN }}
+```
+
+#### Bun Setup Example
+
+For Bun-based projects, install both Node.js (for publishing) and Bun (for building):
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+
+  - uses: oven-sh/setup-bun@v2
+    with:
+      bun-version: latest
+
+  - uses: wgtechlabs/package-build-flow-action@v1
+    with:
+      package-manager: 'bun'  # or 'auto' to detect from bun.lockb
+      npm-token: ${{ secrets.NPM_TOKEN }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Note:** Publishing always uses npm regardless of the package manager, as Bun doesn't have a native publish command.
 
 ### NPM Registry Setup
 
