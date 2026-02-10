@@ -1,4 +1,4 @@
-# NPM Package Build Flow Action
+# Package Build Flow Action
 
 ![GitHub Repo Banner](https://ghrb.waren.build/banner?header=Package+Build+Flow+%F0%9F%93%A6%E2%99%BB%EF%B8%8F&subheader=Automated+NPM+package+versioning%2C+building%2C+and+publishing.&bg=016EEA-016EEA&color=FFFFFF&headerfont=Google+Sans+Code&subheaderfont=Sour+Gummy&watermarkpos=bottom-right)
 <!-- Created with GitHub Repo Banner by Waren Gonzaga: https://ghrb.waren.build -->

@@ -1,4 +1,4 @@
-# Contributing to NPM Package Build Flow Action
+# Contributing to Package Build Flow Action
 
 Thank you for your interest in contributing to this project! We welcome contributions from the community.
 
