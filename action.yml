@@ -1,4 +1,4 @@
-name: 'NPM Package Build Flow'
+name: 'Package Build Flow Action'
 description: 'Automated NPM package versioning, building, and publishing with intelligent flow detection'
 author: 'WG Technology Labs'
 
