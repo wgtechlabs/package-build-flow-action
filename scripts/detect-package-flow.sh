@@ -40,16 +40,6 @@ fi
 BASE_VERSION=$(jq -r '.version' "$PACKAGE_PATH")
 echo "📦 Current package version: $BASE_VERSION"
 
-# Extract version components
-MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
-MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
-PATCH=$(echo "$BASE_VERSION" | cut -d. -f3 | cut -d- -f1)
-
-# Function to increment patch version
-increment_patch() {
-  echo "$MAJOR.$MINOR.$((PATCH + 1))"
-}
-
 # Function to extract prerelease tag from version (e.g., "beta" from "1.0.0-beta.1")
 extract_prerelease_tag() {
   local version=$1
@@ -117,8 +107,7 @@ elif [ "$EVENT_NAME" = "pull_request" ]; then
     else
       # PR to main (not from dev)
       BUILD_FLOW_TYPE="patch"
-      NEXT_VERSION=$(increment_patch)
-      PACKAGE_VERSION="${NEXT_VERSION}-patch.${SHORT_SHA}"
+      PACKAGE_VERSION="${BASE_VERSION}-patch.${SHORT_SHA}"
       NPM_TAG="patch"
       echo "🔧 Flow: Patch PR to main"
     fi
@@ -133,10 +122,7 @@ elif [ "$EVENT_NAME" = "push" ]; then
   if [ "$REF_NAME" = "$MAIN_BRANCH" ]; then
     # Push to main branch - staging
     BUILD_FLOW_TYPE="staging"
-    # Get staging number (use last 6 digits of timestamp)
-    STAGING_NUMBER=$(date +%s)
-    STAGING_NUMBER=${STAGING_NUMBER: -6}
-    PACKAGE_VERSION="${BASE_VERSION}-staging.${STAGING_NUMBER}"
+    PACKAGE_VERSION="${BASE_VERSION}-staging.${SHORT_SHA}"
     NPM_TAG="staging"
     echo "🎯 Flow: Staging release (push to main)"
   elif [ "$REF_NAME" = "$DEV_BRANCH" ]; then
