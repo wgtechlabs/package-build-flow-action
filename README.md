@@ -186,6 +186,7 @@ Tag: patch
 |-------|-------------|---------|----------|
 | `publish-enabled` | Enable publishing to registry | `true` | No |
 | `dry-run` | Perform dry run without publishing | `false` | No |
+| `access` | Package access level for scoped packages: `public` or `restricted` | `public` | No |
 
 ## Outputs
 
@@ -314,6 +315,47 @@ steps:
     registry: 'npm'
     npm-token: ${{ secrets.NPM_TOKEN }}
 ```
+
+#### Scoped Package Access
+
+When publishing scoped packages (e.g., `@org/package-name`) to NPM, the action defaults to `--access public` to avoid 402 payment errors. Scoped packages are private by default on npm, but most open-source packages should be public.
+
+**Default Behavior (Public Access):**
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v1
+  with:
+    registry: 'npm'
+    npm-token: ${{ secrets.NPM_TOKEN }}
+    # access: 'public' is the default - scoped packages will be public
+```
+
+**Private Package Publishing (Requires Paid NPM Plan):**
+
+If you have a paid NPM plan and want to publish private scoped packages:
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v1
+  with:
+    registry: 'npm'
+    npm-token: ${{ secrets.NPM_TOKEN }}
+    access: 'restricted'  # Publishes as private package
+```
+
+**Alternative: Use publishConfig in package.json**
+
+You can also set the access level in your `package.json`:
+
+```json
+{
+  "name": "@myorg/my-package",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+```
+
+The action's `access` input will override `publishConfig` if both are specified.
 
 ### GitHub Packages Setup
 

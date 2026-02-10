@@ -36,6 +36,33 @@ if [ "$PWD" != "$WORKSPACE_ROOT" ] && [ -f "$WORKSPACE_ROOT/.npmrc" ]; then
   echo "📋 Copied .npmrc from workspace root to package directory"
 fi
 
+# Validate and set access level
+# Treat empty string as 'public' (default)
+if [ -z "$ACCESS" ]; then
+  ACCESS="public"
+fi
+
+if [ "$ACCESS" != "public" ] && [ "$ACCESS" != "restricted" ]; then
+  echo "❌ Error: Invalid access value '$ACCESS'. Must be 'public' or 'restricted'"
+  exit 1
+fi
+
+# npm only supports '--access restricted' for scoped packages (@scope/name)
+if [ "$ACCESS" = "restricted" ]; then
+  case "$PACKAGE_NAME" in
+    @*/*)
+      # Scoped package, restricted access is allowed
+      echo "🔐 Package access level: $ACCESS (scoped package)"
+      ;;
+    *)
+      echo "❌ Error: 'restricted' access is only supported for scoped packages (name must be of the form '@scope/name'). Current package name '$PACKAGE_NAME' is unscoped."
+      exit 1
+      ;;
+  esac
+else
+  echo "🔐 Package access level: $ACCESS"
+fi
+
 # Update package.json version (no git tag)
 echo "📝 Updating package.json version..."
 jq --arg version "$PACKAGE_VERSION" '.version = $version' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
@@ -148,7 +175,12 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
+    # Only add --access flag for scoped packages (@scope/name)
+    if [[ "$PACKAGE_NAME" == @*/* ]]; then
+      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
+    else
+      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
+    fi
     NPM_PUBLISHED="dry-run"
   fi
   
@@ -180,7 +212,7 @@ if [ "$DRY_RUN" = "true" ]; then
       echo "📝 Scoped package name: $SCOPED_NAME"
     fi
     
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL"
+    npm publish --dry-run --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"
     GITHUB_PUBLISHED="dry-run"
     
     # Restore original name if changed
@@ -199,12 +231,23 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"; then
-    NPM_PUBLISHED="true"
-    echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+  # Only add --access flag for scoped packages (@scope/name)
+  if [[ "$PACKAGE_NAME" == @*/* ]]; then
+    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
+      NPM_PUBLISHED="true"
+      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+    else
+      echo "❌ Failed to publish to NPM"
+      NPM_PUBLISHED="false"
+    fi
   else
-    echo "❌ Failed to publish to NPM"
-    NPM_PUBLISHED="false"
+    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"; then
+      NPM_PUBLISHED="true"
+      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
+    else
+      echo "❌ Failed to publish to NPM"
+      NPM_PUBLISHED="false"
+    fi
   fi
 fi
 
@@ -240,7 +283,7 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     NEEDS_RESTORE=true
   fi
   
-  if npm publish --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL"; then
+  if npm publish --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"; then
     GITHUB_PUBLISHED="true"
     PUBLISHED_NAME=$(jq -r '.name' "$PACKAGE_PATH")
     echo "✅ Published to GitHub Packages: $PUBLISHED_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
