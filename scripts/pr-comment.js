@@ -196,7 +196,7 @@ ${flowInfo.description}
 
   commentBody += `
 ---
-*This package was built automatically by the NPM Package Build Flow action.*
+*This package was built automatically by the Package Build Flow action.*
 `;
 }
 
@@ -212,7 +212,7 @@ function postComment(body) {
       method: 'POST',
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
-        'User-Agent': 'npm-package-build-flow-action',
+        'User-Agent': 'package-build-flow-action',
         'Content-Type': 'application/json',
         'Content-Length': data.length
       }

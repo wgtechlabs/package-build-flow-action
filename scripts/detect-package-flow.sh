@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Detect NPM Package Build Flow
+# Detect Package Build Flow
 # Implements intelligent flow detection based on GitHub context
 
 echo "🔍 Detecting build flow..."
