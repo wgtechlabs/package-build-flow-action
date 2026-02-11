@@ -203,7 +203,7 @@ Tag: patch
 | `monorepo` | Enable monorepo mode | `false` | No |
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
-| `changed-only` | Only build/publish packages that changed since last release (monorepo mode only). Uses git diff to detect changes. | `true` | No |
+| `changed-only` | Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only). Uses git diff to detect changes. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 

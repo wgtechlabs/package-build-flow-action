@@ -66,7 +66,7 @@ case "$EVENT_NAME" in
       
       # Get all tags sorted by version
       set +e
-      PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -F -v "${CURRENT_TAG}" | head -n 1)
+      PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -Fxv "${CURRENT_TAG}" | head -n 1)
       set -e
       
       if [ -n "$PREVIOUS_TAG" ]; then
@@ -97,13 +97,27 @@ if [ -z "$COMPARE_BASE" ] || [ "$SHALLOW_CLONE" = true ]; then
     set +e
     case "$EVENT_NAME" in
       pull_request)
-        # Fetch PR base branch
-        PR_BASE_REF=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.base.ref')
-        git fetch --depth=100 origin "$PR_BASE_REF" 2>/dev/null
-        fetch_status=$?
-        if [ "$fetch_status" -eq 0 ]; then
-          COMPARE_BASE="origin/$PR_BASE_REF"
-          echo "✅ Successfully fetched base branch: $COMPARE_BASE"
+        # Prefer fetching the specific PR base commit SHA for deterministic diffs
+        PR_BASE_SHA=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.base.sha // empty')
+        fetch_status=1
+        if [ -n "$PR_BASE_SHA" ]; then
+          git fetch --depth=100 origin "$PR_BASE_SHA" 2>/dev/null
+          fetch_status=$?
+          if [ "$fetch_status" -eq 0 ]; then
+            COMPARE_BASE="$PR_BASE_SHA"
+            echo "✅ Successfully fetched base commit: $COMPARE_BASE"
+          fi
+        fi
+
+        # Fallback: fetch PR base branch ref if fetching by SHA failed
+        if [ -z "$COMPARE_BASE" ]; then
+          PR_BASE_REF=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.base.ref')
+          git fetch --depth=100 origin "$PR_BASE_REF" 2>/dev/null
+          fetch_status=$?
+          if [ "$fetch_status" -eq 0 ]; then
+            COMPARE_BASE="origin/$PR_BASE_REF"
+            echo "✅ Successfully fetched base branch: $COMPARE_BASE"
+          fi
         fi
         ;;
       
@@ -122,7 +136,7 @@ if [ -z "$COMPARE_BASE" ] || [ "$SHALLOW_CLONE" = true ]; then
         git fetch --tags --depth=100 2>/dev/null
         fetch_status=$?
         if [ "$fetch_status" -eq 0 ] && [ -n "$CURRENT_TAG" ]; then
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -F -v "${CURRENT_TAG}" | head -n 1)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -Fxv "${CURRENT_TAG}" | head -n 1)
           if [ -n "$PREVIOUS_TAG" ]; then
             COMPARE_BASE="$PREVIOUS_TAG"
             echo "✅ Successfully fetched tags, using: $COMPARE_BASE"
@@ -182,7 +196,7 @@ echo ""
 # Check if any root config files changed
 ALL_PACKAGES_CHANGED=false
 for config_file in "${ROOT_CONFIG_FILES[@]}"; do
-  if echo "$CHANGED_FILES" | grep -q "^${config_file}$"; then
+  if echo "$CHANGED_FILES" | grep -Fxq "$config_file"; then
     echo "⚠️  Root config file changed: $config_file"
     ALL_PACKAGES_CHANGED=true
   fi

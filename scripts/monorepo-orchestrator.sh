@@ -119,8 +119,9 @@ FAILED_PACKAGES=0
 echo "📦 Found $TOTAL_PACKAGES package(s) to process"
 echo ""
 
-# Change Detection (only for monorepo with workspace discovery or when explicitly enabled)
-if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ]; then
+# Change Detection (only for monorepo with workspace discovery)
+# Skip if using explicit package-paths (no directory metadata available)
+if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PACKAGES" != "[]" ]; then
   echo "🔍 Running change detection..."
   echo ""
   
@@ -175,20 +176,22 @@ if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ]; then
           echo "🔄 Falling back to processing all packages"
           echo ""
         else
-          # Extract changed package paths into bash array for efficient lookup
-          # This is O(n) instead of O(n*m) with repeated jq calls
+          # Extract changed package paths into bash array
           mapfile -t CHANGED_PATHS < <(echo "$CHANGED_PACKAGES_JSON" | jq -r '.[].path')
+          
+          # Build associative array for O(1) membership checks
+          declare -A CHANGED_LOOKUP=()
+          for changed_path in "${CHANGED_PATHS[@]}"; do
+            CHANGED_LOOKUP["$changed_path"]=1
+          done
           
           # Filter PACKAGE_ARRAY to only include changed packages
           FILTERED_ARRAY=()
           for pkg_path in "${PACKAGE_ARRAY[@]}"; do
-            # Check if this package path is in the changed packages list
-            for changed_path in "${CHANGED_PATHS[@]}"; do
-              if [ "$pkg_path" = "$changed_path" ]; then
-                FILTERED_ARRAY+=("$pkg_path")
-                break
-              fi
-            done
+            # Check if this package path is in the changed packages set
+            if [ -n "${CHANGED_LOOKUP[$pkg_path]+_}" ]; then
+              FILTERED_ARRAY+=("$pkg_path")
+            fi
           done
           
           PACKAGE_ARRAY=("${FILTERED_ARRAY[@]}")
