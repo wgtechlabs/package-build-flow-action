@@ -126,6 +126,11 @@ inputs:
     description: 'Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only)'
     required: false
     default: 'true'
+  
+  dependency-order:
+    description: 'Build packages in dependency order (topological sort)'
+    required: false
+    default: 'true'
 
 outputs:
   # Version Outputs
@@ -210,6 +215,7 @@ runs:
         PACKAGE_PATHS: ${{ inputs.package-paths }}
         WORKSPACE_DETECTION: ${{ inputs.workspace-detection }}
         CHANGED_ONLY: ${{ inputs.changed-only }}
+        DEPENDENCY_ORDER: ${{ inputs.dependency-order }}
         BUILD_SCRIPT: ${{ inputs.build-script }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         VERSION_PREFIX: ${{ inputs.version-prefix }}
