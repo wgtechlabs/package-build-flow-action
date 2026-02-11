@@ -30,7 +30,12 @@ jobs:
           # Enable monorepo mode
           monorepo: 'true'
           
-          # List all packages to process (comma-separated)
+          # Auto-discover packages from workspaces (default: true)
+          # Reads workspaces field from root package.json
+          # Comment out to use workspace auto-discovery:
+          # workspace-detection: 'true'
+          
+          # Or explicitly list all packages (takes priority over workspace-detection)
           package-paths: 'core/package.json,plugins/plugin-discord/package.json,apps/cli/package.json'
           
           # Registry configuration
@@ -53,6 +58,12 @@ jobs:
           # Security configuration (optional)
           audit-enabled: 'true'
           fail-on-audit: 'false'
+      
+      - name: Display Discovered Packages (if workspace-detection used)
+        if: inputs.workspace-detection == 'true' && !inputs.package-paths
+        run: |
+          echo "Discovered ${{ steps.build.outputs.package-count }} packages:"
+          echo '${{ steps.build.outputs.discovered-packages }}' | jq '.'
       
       - name: Display Build Results
         run: |

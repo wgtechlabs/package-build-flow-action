@@ -201,7 +201,8 @@ Tag: patch
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
 | `monorepo` | Enable monorepo mode | `false` | No |
-| `package-paths` | Comma-separated list of package.json paths (monorepo mode only) | - | If `monorepo: 'true'` |
+| `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. | - | No |
+| `workspace-detection` | Auto-detect workspaces from root package.json. Reads the `workspaces` field and discovers all non-private packages. | `true` | No |
 
 ## Outputs
 
@@ -218,6 +219,8 @@ Tag: patch
 | `critical-vulnerabilities` | Critical vulnerabilities count (single-package mode) |
 | `high-vulnerabilities` | High vulnerabilities count (single-package mode) |
 | `build-results` | JSON array of per-package build results (monorepo mode only) |
+| `discovered-packages` | JSON array of discovered packages with name, version, path, and dir (monorepo mode with workspace-detection only) |
+| `package-count` | Number of discovered publishable packages (monorepo mode with workspace-detection only) |
 
 ### Monorepo Build Results Format
 
@@ -669,7 +672,83 @@ Test the action without publishing:
 
 ### Monorepo Support
 
-Process multiple packages in a monorepo with independent versioning:
+Process multiple packages in a monorepo with independent versioning.
+
+#### Automatic Workspace Discovery
+
+The action can automatically discover packages from your workspace configuration:
+
+```yaml
+name: Monorepo Build and Publish
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build-monorepo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build and Publish Multiple Packages
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v2
+        with:
+          # Enable monorepo mode
+          monorepo: 'true'
+          
+          # Auto-discover packages from workspaces (default: true)
+          # No package-paths needed!
+          
+          # Registry configuration
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Display Discovered Packages
+        run: |
+          echo "Discovered ${{ steps.build.outputs.package-count }} packages:"
+          echo '${{ steps.build.outputs.discovered-packages }}' | jq '.'
+      
+      - name: Display Build Results
+        run: |
+          echo "Build Results:"
+          echo '${{ steps.build.outputs.build-results }}' | jq '.'
+```
+
+**Root package.json with workspaces:**
+```json
+{
+  "name": "my-monorepo",
+  "private": true,
+  "workspaces": [
+    "core",
+    "apps/*",
+    "plugins/*"
+  ]
+}
+```
+
+The action will:
+- Read the `workspaces` field from root `package.json`
+- Resolve glob patterns like `apps/*` and `plugins/*`
+- Skip packages with `"private": true`
+- Process all discovered publishable packages
+
+#### Manual Package List
+
+You can also explicitly specify packages (takes priority over workspace detection):
 
 ```yaml
 name: Monorepo Build and Publish
@@ -721,6 +800,7 @@ jobs:
 - If one package fails, remaining packages still attempt to build/publish
 - Returns JSON array with per-package results
 - Works with `dry-run` and `publish-enabled: false`
+- Supports both workspace auto-discovery and explicit package lists
 
 **Example Output:**
 ```json
@@ -734,6 +814,24 @@ jobs:
     "name": "@tinyclaw/plugin-discord",
     "version": "1.2.0-dev.abc1234",
     "result": "success"
+  }
+]
+```
+
+**Discovered Packages Output:**
+```json
+[
+  {
+    "name": "@tinyclaw/core",
+    "version": "1.0.0",
+    "path": "core/package.json",
+    "dir": "core"
+  },
+  {
+    "name": "@tinyclaw/plugin-discord",
+    "version": "1.2.0",
+    "path": "plugins/plugin-discord/package.json",
+    "dir": "plugins/plugin-discord"
   }
 ]
 ```
