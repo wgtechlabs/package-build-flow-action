@@ -250,16 +250,17 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
   # Prepare packages JSON for the Node.js script
   # We need to build a JSON array of packages currently in PACKAGE_ARRAY
   # Match them with the discovered packages metadata
-  PACKAGES_FOR_ORDERING="[]"
   
+  # Build associative array for O(1) lookup of package paths
+  declare -A PATH_LOOKUP=()
   for pkg_path in "${PACKAGE_ARRAY[@]}"; do
-    # Find matching package in DISCOVERED_PACKAGES
-    MATCHING_PKG=$(echo "$DISCOVERED_PACKAGES" | jq --arg path "$pkg_path" '.[] | select(.path == $path)')
-    
-    if [ -n "$MATCHING_PKG" ] && [ "$MATCHING_PKG" != "null" ]; then
-      PACKAGES_FOR_ORDERING=$(echo "$PACKAGES_FOR_ORDERING" | jq --argjson pkg "$MATCHING_PKG" '. += [$pkg]')
-    fi
+    PATH_LOOKUP["$pkg_path"]=1
   done
+  
+  # Filter discovered packages to only those in PACKAGE_ARRAY
+  PACKAGES_FOR_ORDERING=$(echo "$DISCOVERED_PACKAGES" | jq --argjson paths "$(printf '%s\n' "${!PATH_LOOKUP[@]}" | jq -R . | jq -s .)" '
+    [.[] | select(.path as $p | $paths | index($p) != null)]
+  ')
   
   # Run dependency order resolution script
   DEP_ORDER_OUTPUT=$(mktemp)
@@ -281,8 +282,8 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
       export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
       
       if [ -n "$ORDERED_PACKAGES_JSON" ] && [ "$ORDERED_PACKAGES_JSON" != "null" ]; then
-        # Update PACKAGE_ARRAY with ordered paths
-        IFS=',' read -ra PACKAGE_ARRAY <<< "$(echo "$ORDERED_PACKAGES_JSON" | jq -r '[.[].path] | join(",")')"
+        # Update PACKAGE_ARRAY with ordered paths using mapfile to avoid comma issues
+        mapfile -t PACKAGE_ARRAY < <(echo "$ORDERED_PACKAGES_JSON" | jq -r '.[].path')
         echo "✅ Packages reordered based on dependencies"
       else
         echo "⚠️  Warning: Could not parse ordered packages, using original order"

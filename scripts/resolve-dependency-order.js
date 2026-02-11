@@ -151,7 +151,6 @@ while (queue.length > 0) {
 
 // Check for circular dependencies
 if (sorted.length !== packages.filter(p => p.name).length) {
-  console.error('❌ Circular dependency detected!');
   console.error('');
   
   // Find packages involved in the cycle
