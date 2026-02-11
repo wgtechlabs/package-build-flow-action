@@ -338,7 +338,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg version "$PACKAGE_VERSION" \
       --arg result "$RESULT" \
       --arg error "$ERROR_MESSAGE" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
     echo ""
     continue
   fi
@@ -362,7 +362,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg version "$PACKAGE_VERSION" \
       --arg result "$RESULT" \
       --arg error "$ERROR_MESSAGE" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
     echo ""
     continue
   fi
@@ -412,7 +412,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg version "$PACKAGE_VERSION" \
       --arg result "$RESULT" \
       --arg error "$ERROR_MESSAGE" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
     rm -f "$TEMP_OUTPUT"
     echo ""
     continue
@@ -451,7 +451,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
         --arg version "$PACKAGE_VERSION" \
         --arg result "$RESULT" \
         --arg error "$ERROR_MESSAGE" \
-        '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+        '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
       rm -f "$TEMP_OUTPUT"
       echo ""
       continue
@@ -469,12 +469,22 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     echo "✅ Build and publish completed"
     RESULT="success"
     SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
+    
+    # Extract publish status from GITHUB_OUTPUT
+    NPM_PUBLISHED="false"
+    GITHUB_PUBLISHED="false"
+    if [ -f "$GITHUB_OUTPUT" ]; then
+      NPM_PUBLISHED=$(grep "^npm-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2- || echo "false")
+      GITHUB_PUBLISHED=$(grep "^github-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2- || echo "false")
+    fi
   else
     cat "$TEMP_OUTPUT"
     echo "❌ Build and publish failed (but continuing with remaining packages)"
     RESULT="failed"
     ERROR_MESSAGE="Build or publish failed"
     FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
+    NPM_PUBLISHED="false"
+    GITHUB_PUBLISHED="false"
   fi
   
   # Step 4: Run audit if enabled
@@ -509,13 +519,17 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
       --arg version "$PACKAGE_VERSION" \
       --arg result "$RESULT" \
-      '. += [{"name": $name, "version": $version, "result": $result}]')
+      --arg npm_published "$NPM_PUBLISHED" \
+      --arg github_published "$GITHUB_PUBLISHED" \
+      '. += [{"name": $name, "version": $version, "result": $result, "npm-published": $npm_published, "github-published": $github_published}]')
   else
     BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
       --arg version "$PACKAGE_VERSION" \
       --arg result "$RESULT" \
       --arg error "${ERROR_MESSAGE:-Unknown error}" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+      --arg npm_published "$NPM_PUBLISHED" \
+      --arg github_published "$GITHUB_PUBLISHED" \
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": $npm_published, "github-published": $github_published}]')
   fi
   
   rm -f "$TEMP_OUTPUT"
