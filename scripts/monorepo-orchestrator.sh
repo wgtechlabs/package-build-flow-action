@@ -69,23 +69,22 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   TEMP_OUTPUT=$(mktemp)
   
   # Step 1: Detect flow
-  echo "🔍 Step 1/4: Detecting build flow..."
+  echo "🔍 Detecting build flow..."
   if bash "$ACTION_PATH/scripts/detect-package-flow.sh" > "$TEMP_OUTPUT" 2>&1; then
     cat "$TEMP_OUTPUT"
     
     # Parse outputs from the detect script
     # The script writes to GITHUB_OUTPUT, but we need to capture those values
-    # We'll re-run the detection logic inline to get the values
+    # Extract version and tag from the output
     PACKAGE_VERSION=""
     NPM_TAG=""
     
-    # Re-parse to get version and tag
     if [ -f "$GITHUB_OUTPUT" ]; then
       PACKAGE_VERSION=$(grep "^version=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
       NPM_TAG=$(grep "^npm-tag=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
     fi
     
-    # If not found in GITHUB_OUTPUT, parse from the temp output
+    # Fallback: parse from temp output if not in GITHUB_OUTPUT
     if [ -z "$PACKAGE_VERSION" ]; then
       PACKAGE_VERSION=$(grep "Package Version:" "$TEMP_OUTPUT" | tail -1 | awk '{print $NF}')
     fi
@@ -115,7 +114,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   # Step 2: Configure registries (skip if publish disabled or dry-run)
   echo ""
   if [ "$PUBLISH_ENABLED" = "true" ] && [ "$DRY_RUN" != "true" ]; then
-    echo "⚙️  Step 2/4: Configuring registries..."
+    echo "⚙️  Configuring registries..."
     if bash "$ACTION_PATH/scripts/configure-registries.sh" > "$TEMP_OUTPUT" 2>&1; then
       cat "$TEMP_OUTPUT"
       echo "✅ Registry configuration completed"
@@ -136,12 +135,12 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       continue
     fi
   else
-    echo "⏭️  Step 2/4: Skipping registry configuration (publish disabled or dry-run mode)"
+    echo "⏭️  Skipping registry configuration (publish disabled or dry-run mode)"
   fi
   
   # Step 3: Build and publish
   echo ""
-  echo "🏗️  Step 3/4: Building and publishing..."
+  echo "🏗️  Building and publishing..."
   export PACKAGE_VERSION
   export NPM_TAG
   
@@ -161,7 +160,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   # Step 4: Run audit if enabled
   echo ""
   if [ "$AUDIT_ENABLED" = "true" ]; then
-    echo "🔒 Step 4/4: Running security audit..."
+    echo "🔒 Running security audit..."
     if node "$ACTION_PATH/scripts/audit-package.js" > "$TEMP_OUTPUT" 2>&1; then
       cat "$TEMP_OUTPUT"
       echo "✅ Security audit completed"
@@ -171,7 +170,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       # Don't mark as failed if only audit fails
     fi
   else
-    echo "⏭️  Step 4/4: Security audit disabled"
+    echo "⏭️  Security audit disabled"
   fi
   
   # Add to results

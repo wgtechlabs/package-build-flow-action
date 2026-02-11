@@ -163,7 +163,7 @@ outputs:
   
   # Monorepo Outputs
   build-results:
-    description: 'JSON array of per-package build results (monorepo mode)'
+    description: 'JSON array of per-package build results (only populated in monorepo mode when monorepo: true)'
     value: ${{ steps.monorepo-orchestrator.outputs.build-results }}
 
 runs:
