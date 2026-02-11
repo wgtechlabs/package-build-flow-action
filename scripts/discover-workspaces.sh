@@ -64,14 +64,25 @@ echo "📋 Workspace patterns:"
 echo "$WORKSPACES" | sed 's/^/  - /'
 echo ""
 
-# Get the directory containing the root package.json
+# Get the directory containing the root package.json and save original working directory
+ORIGINAL_DIR=$(pwd)
 ROOT_DIR=$(dirname "$ROOT_PACKAGE_PATH")
+
+# Convert to absolute path for later use
+if [[ "$ROOT_DIR" != /* ]]; then
+  ROOT_DIR="$ORIGINAL_DIR/$ROOT_DIR"
+fi
+
 cd "$ROOT_DIR"
 
 # Discover packages
 DISCOVERED_PACKAGES="[]"
 TOTAL_FOUND=0
 SKIPPED_PRIVATE=0
+SKIPPED_NEGATED=0
+
+# Track discovered package paths to avoid duplicates
+declare -A DISCOVERED_PATHS
 
 echo "🔎 Resolving workspace patterns..."
 echo ""
@@ -84,22 +95,25 @@ while IFS= read -r pattern; do
     continue
   fi
   
+  # Handle negated patterns (exclusions)
+  if [[ "$pattern" == !* ]]; then
+    echo "  Pattern: $pattern (exclusion - skipping)"
+    echo "    ⚠️  Note: Negated patterns are not yet supported; pattern will be ignored"
+    SKIPPED_NEGATED=$((SKIPPED_NEGATED + 1))
+    continue
+  fi
+  
   echo "  Pattern: $pattern"
   
   # Check if pattern contains glob characters
   if [[ "$pattern" == *"*"* ]] || [[ "$pattern" == *"?"* ]]; then
-    # Glob pattern - find all matching directories
-    # Use find with pattern matching
-    # Convert glob pattern to find-compatible pattern
-    # e.g., "apps/*" becomes finding all dirs in apps/
+    # Glob pattern - find all matching directories using shell globbing
     
-    # Extract base directory and glob part
+    # Extract base directory to quickly skip non-existent roots
     if [[ "$pattern" == */* ]]; then
       BASE_DIR="${pattern%/*}"
-      GLOB_PART="${pattern##*/}"
     else
       BASE_DIR="."
-      GLOB_PART="$pattern"
     fi
     
     # Find directories matching the pattern
@@ -126,11 +140,20 @@ while IFS= read -r pattern; do
       for dir in "${MATCHING_DIRS[@]}"; do
         PKG_PATH="$dir/package.json"
         if [ -f "$PKG_PATH" ]; then
+          # Normalize path (remove leading ./)
+          PKG_PATH_NORMALIZED="${PKG_PATH#./}"
+          
+          # Check for duplicates
+          if [ -n "${DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]}" ]; then
+            echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (already discovered)"
+            continue
+          fi
+          
           # Check if package is private
           IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
           
           if [ "$IS_PRIVATE" = "true" ]; then
-            echo "    ⏭️  Skipping $PKG_PATH (private: true)"
+            echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (private: true)"
             SKIPPED_PRIVATE=$((SKIPPED_PRIVATE + 1))
             continue
           fi
@@ -139,11 +162,22 @@ while IFS= read -r pattern; do
           PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
           PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
           
-          # Normalize path (remove leading ./)
-          PKG_PATH_NORMALIZED="${PKG_PATH#./}"
           PKG_DIR="${dir#./}"
           
+          # Convert path to be relative to original working directory
+          if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
+            # Calculate relative path from original dir to root dir
+            REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
+            if [ "$REL_ROOT" != "." ]; then
+              PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
+              PKG_DIR="$REL_ROOT/$PKG_DIR"
+            fi
+          fi
+          
           echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
+          
+          # Mark as discovered
+          DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]=1
           
           # Add to discovered packages
           DISCOVERED_PACKAGES=$(echo "$DISCOVERED_PACKAGES" | jq \
@@ -163,11 +197,20 @@ while IFS= read -r pattern; do
       PKG_PATH="$pattern/package.json"
       
       if [ -f "$PKG_PATH" ]; then
+        # Normalize path (remove leading ./)
+        PKG_PATH_NORMALIZED="${PKG_PATH#./}"
+        
+        # Check for duplicates
+        if [ -n "${DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]}" ]; then
+          echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (already discovered)"
+          continue
+        fi
+        
         # Check if package is private
         IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
         
         if [ "$IS_PRIVATE" = "true" ]; then
-          echo "    ⏭️  Skipping $PKG_PATH (private: true)"
+          echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (private: true)"
           SKIPPED_PRIVATE=$((SKIPPED_PRIVATE + 1))
           continue
         fi
@@ -176,11 +219,22 @@ while IFS= read -r pattern; do
         PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
         PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
         
-        # Normalize path (remove leading ./)
-        PKG_PATH_NORMALIZED="${PKG_PATH#./}"
         PKG_DIR="${pattern#./}"
         
+        # Convert path to be relative to original working directory
+        if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
+          # Calculate relative path from original dir to root dir
+          REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
+          if [ "$REL_ROOT" != "." ]; then
+            PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
+            PKG_DIR="$REL_ROOT/$PKG_DIR"
+          fi
+        fi
+        
         echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
+        
+        # Mark as discovered
+        DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]=1
         
         # Add to discovered packages
         DISCOVERED_PACKAGES=$(echo "$DISCOVERED_PACKAGES" | jq \
@@ -207,6 +261,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "Total packages found: $TOTAL_FOUND"
 echo "Private packages skipped: $SKIPPED_PRIVATE"
+if [ "$SKIPPED_NEGATED" -gt 0 ]; then
+  echo "Negated patterns skipped: $SKIPPED_NEGATED"
+fi
 echo ""
 
 if [ "$TOTAL_FOUND" -eq 0 ]; then

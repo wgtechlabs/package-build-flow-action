@@ -30,12 +30,12 @@ jobs:
           # Enable monorepo mode
           monorepo: 'true'
           
-          # Auto-discover packages from workspaces (default: true)
-          # Reads workspaces field from root package.json
-          # Comment out to use workspace auto-discovery:
-          # workspace-detection: 'true'
+          # Workspace auto-discovery (default: true)
+          # Reads the "workspaces" field from the root package.json when `package-paths` is not set.
+          workspace-detection: 'true'
           
-          # Or explicitly list all packages (takes priority over workspace-detection)
+          # To override workspace auto-discovery, explicitly list all package.json files here.
+          # When this is set, it takes priority over workspace-detection; comment out/remove to use auto-discovery.
           package-paths: 'core/package.json,plugins/plugin-discord/package.json,apps/cli/package.json'
           
           # Registry configuration
