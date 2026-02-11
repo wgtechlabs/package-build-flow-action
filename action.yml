@@ -116,6 +116,11 @@ inputs:
     description: 'Comma-separated list of package.json paths (monorepo mode)'
     required: false
     default: ''
+  
+  workspace-detection:
+    description: 'Auto-detect workspaces from root package.json'
+    required: false
+    default: 'true'
 
 outputs:
   # Version Outputs
@@ -165,6 +170,14 @@ outputs:
   build-results:
     description: 'JSON array of per-package build results (only populated in monorepo mode when monorepo: true)'
     value: ${{ steps.monorepo-orchestrator.outputs.build-results }}
+  
+  discovered-packages:
+    description: 'JSON array of discovered packages with name, version, path, and dir; when workspace-detection is not used this will be an empty array []'
+    value: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
+  
+  package-count:
+    description: 'Number of discovered publishable packages; when workspace-detection is not used this will be 0'
+    value: ${{ steps.monorepo-orchestrator.outputs.package-count }}
 
 runs:
   using: 'composite'
@@ -180,7 +193,9 @@ runs:
         GITHUB_CONTEXT: ${{ toJson(github) }}
         MAIN_BRANCH: ${{ inputs.main-branch }}
         DEV_BRANCH: ${{ inputs.dev-branch }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
         PACKAGE_PATHS: ${{ inputs.package-paths }}
+        WORKSPACE_DETECTION: ${{ inputs.workspace-detection }}
         BUILD_SCRIPT: ${{ inputs.build-script }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         VERSION_PREFIX: ${{ inputs.version-prefix }}
