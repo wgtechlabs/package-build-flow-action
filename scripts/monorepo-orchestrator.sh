@@ -474,8 +474,11 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     NPM_PUBLISHED="false"
     GITHUB_PUBLISHED="false"
     if [ -f "$GITHUB_OUTPUT" ]; then
-      NPM_PUBLISHED=$(grep "^npm-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2- || echo "false")
-      GITHUB_PUBLISHED=$(grep "^github-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2- || echo "false")
+      NPM_PUBLISHED=$(grep "^npm-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+      GITHUB_PUBLISHED=$(grep "^github-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+      # Default to false if grep found nothing
+      [ -z "$NPM_PUBLISHED" ] && NPM_PUBLISHED="false"
+      [ -z "$GITHUB_PUBLISHED" ] && GITHUB_PUBLISHED="false"
     fi
   else
     cat "$TEMP_OUTPUT"
