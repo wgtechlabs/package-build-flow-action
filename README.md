@@ -203,6 +203,7 @@ Tag: patch
 | `monorepo` | Enable monorepo mode | `false` | No |
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
+| `changed-only` | Only build/publish packages that changed since last release (monorepo mode only). Uses git diff to detect changes. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
@@ -223,6 +224,8 @@ Tag: patch
 | `build-results` | JSON array of per-package build results (monorepo mode only) |
 | `discovered-packages` | JSON array of discovered packages with name, version, path, and dir (monorepo mode with workspace-detection only) |
 | `package-count` | Number of discovered publishable packages (monorepo mode with workspace-detection only) |
+| `changed-packages` | JSON array of packages with changes (monorepo mode with changed-only only) |
+| `changed-count` | Number of changed packages (monorepo mode with changed-only only) |
 
 ### Monorepo Build Results Format
 
@@ -803,6 +806,55 @@ jobs:
 - Returns JSON array with per-package results
 - Works with `dry-run` and `publish-enabled: false`
 - Supports both workspace auto-discovery and explicit package lists
+
+#### Automatic Change Detection
+
+By default, the action detects which packages changed and only builds/publishes those packages:
+
+```yaml
+- name: Build and Publish Changed Packages
+  uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    monorepo: 'true'
+    # changed-only: 'true' (default - only build changed packages)
+    npm-token: ${{ secrets.NPM_TOKEN }}
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**How it works:**
+- **Pull Request**: Compares against PR base branch to detect changed files
+- **Push**: Compares against previous commit (`HEAD~1`)
+- **Release**: Compares against previous git tag
+- Maps changed files to their owning workspace package
+- Root config files (`package.json`, `tsconfig.json`, lockfiles) mark ALL packages as changed
+- Automatically handles shallow clones by fetching necessary history
+- Falls back to building all packages if git diff fails (safe default)
+
+**Example output:**
+```json
+{
+  "changed-packages": [
+    {"name": "@tinyclaw/core", "path": "core/package.json"}
+  ],
+  "changed-count": 1
+}
+```
+
+**To disable change detection and always build all packages:**
+```yaml
+- name: Build All Packages
+  uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    monorepo: 'true'
+    changed-only: 'false'  # Disable change detection
+    npm-token: ${{ secrets.NPM_TOKEN }}
+```
+
+**Benefits:**
+- ⚡ Faster CI/CD - skip unchanged packages
+- 💰 Reduced CI costs - fewer builds
+- 🎯 No manual changesets needed - automatic detection
+- 🔒 Safe fallbacks - builds all packages if detection fails
 
 **Example Output:**
 ```json
