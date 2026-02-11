@@ -1,0 +1,94 @@
+name: Workspace Auto-Discovery Example
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  auto-discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build and Publish with Auto-Discovery
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v2
+        with:
+          # Enable monorepo mode
+          monorepo: 'true'
+          
+          # workspace-detection is true by default
+          # Automatically discovers packages from root package.json workspaces field
+          
+          # Registry configuration
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Build configuration
+          build-script: 'build'
+          package-manager: 'auto'
+          
+          # Publishing configuration
+          publish-enabled: 'true'
+          access: 'public'
+          
+          # Security configuration
+          audit-enabled: 'true'
+          fail-on-audit: 'false'
+      
+      # Display discovered packages
+      - name: Show Discovered Packages
+        if: steps.build.outputs.package-count != '0'
+        run: |
+          echo "🔍 Discovered ${{ steps.build.outputs.package-count }} publishable packages:"
+          echo ""
+          echo '${{ steps.build.outputs.discovered-packages }}' | jq -r '.[] | "  • \(.name) v\(.version) (\(.path))"'
+          echo ""
+      
+      # Display build results
+      - name: Show Build Results
+        run: |
+          echo "📊 Build Results:"
+          echo ""
+          echo '${{ steps.build.outputs.build-results }}' | jq -r '.[] | "  \(if .result == "success" then "✅" else "❌" end) \(.name) v\(.version) - \(.result)\(if .error then " (\(.error))" else "" end)"'
+          echo ""
+          
+          # Check for failures
+          FAILED_COUNT=$(echo '${{ steps.build.outputs.build-results }}' | jq '[.[] | select(.result == "failed")] | length')
+          if [ "$FAILED_COUNT" -gt 0 ]; then
+            echo "❌ $FAILED_COUNT package(s) failed to build"
+            exit 1
+          else
+            echo "✅ All packages built successfully"
+          fi
+
+# Example root package.json structure:
+#
+# {
+#   "name": "my-monorepo",
+#   "private": true,
+#   "workspaces": [
+#     "core",
+#     "packages/*",
+#     "apps/*",
+#     "plugins/*"
+#   ]
+# }
+#
+# This will automatically discover:
+# - core/package.json
+# - All packages/*/package.json (where private != true)
+# - All apps/*/package.json (where private != true)
+# - All plugins/*/package.json (where private != true)
