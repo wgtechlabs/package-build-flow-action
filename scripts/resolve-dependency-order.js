@@ -44,14 +44,12 @@ if (validPackages.length === 0) {
   process.exit(1);
 }
 
-packages = validPackages;
-
-console.log(`📦 Processing ${packages.length} package(s)`);
+console.log(`📦 Processing ${validPackages.length} package(s)`);
 console.log('');
 
 // Build package name to metadata map
 const packageMap = new Map();
-packages.forEach(pkg => {
+validPackages.forEach(pkg => {
   packageMap.set(pkg.name, pkg);
 });
 
@@ -98,19 +96,14 @@ const dependents = new Map(); // package name -> array of packages that depend o
 const inDegree = new Map(); // package name -> count of dependencies
 
 // Initialize maps
-packages.forEach(pkg => {
-  if (!pkg.name) return;
-  
+validPackages.forEach(pkg => {
   dependencyGraph.set(pkg.name, []);
   dependents.set(pkg.name, []);
   inDegree.set(pkg.name, 0);
 });
 
 // Build the graph
-packages.forEach(pkg => {
-  // Skip packages without name or path (should not happen after filtering, but defensive check)
-  if (!pkg.name || !pkg.path) return;
-  
+validPackages.forEach(pkg => {
   const deps = getWorkspaceDependencies(pkg.path);
   dependencyGraph.set(pkg.name, deps);
   
@@ -164,13 +157,13 @@ while (queue.length > 0) {
 }
 
 // Check for circular dependencies
-if (sorted.length !== packages.filter(p => p.name).length) {
+if (sorted.length !== validPackages.length) {
   console.error('');
   
   // Find packages involved in the cycle
   const cyclePackages = [];
-  packages.forEach(pkg => {
-    if (pkg.name && inDegree.get(pkg.name) > 0) {
+  validPackages.forEach(pkg => {
+    if (inDegree.get(pkg.name) > 0) {
       cyclePackages.push(pkg.name);
     }
   });
