@@ -119,6 +119,21 @@ if (AUDIT_ENABLED) {
 // Generate comment body
 let commentBody;
 
+// Helper function to get GitHub-scoped package name for unscoped packages
+function getGitHubScopedName(packageName) {
+  if (packageName.startsWith('@')) {
+    return packageName; // Already scoped
+  }
+  
+  const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
+  if (PACKAGE_SCOPE) {
+    const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+    return `${scope}/${packageName}`;
+  } else {
+    return `@${repoOwner}/${packageName}`;
+  }
+}
+
 if (MONOREPO_MODE) {
   // Monorepo mode
   console.log('  Generating monorepo comment...');
@@ -191,20 +206,9 @@ if (MONOREPO_MODE) {
         
         // Determine package name for install command
         // Prefer npm name, but use GitHub-scoped name if only published to GitHub
-        let installName = pkg.name;
-        if (!npmPublished && githubPublished) {
-          // Only published to GitHub - need to determine scoped name
-          if (!pkg.name.startsWith('@')) {
-            // Package needs scoping for GitHub
-            const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
-            if (PACKAGE_SCOPE) {
-              const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
-              installName = `${scope}/${pkg.name}`;
-            } else {
-              installName = `@${repoOwner}/${pkg.name}`;
-            }
-          }
-        }
+        const installName = (!npmPublished && githubPublished) 
+          ? getGitHubScopedName(pkg.name)
+          : pkg.name;
         
         const installCmd = `\`npm i ${installName}@${buildResult.version}\``;
         packagesTable += `| ${pkg.name} | ${version} | ${status} | ${installCmd} |\n`;
@@ -240,18 +244,9 @@ if (MONOREPO_MODE) {
         const githubPublished = pkg['github-published'] === 'true';
         
         // Determine package name for install command
-        let installName = pkg.name;
-        
-        // If only published to GitHub and package is unscoped, use GitHub-scoped name
-        if (!npmPublished && githubPublished && !pkg.name.startsWith('@')) {
-          const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
-          if (PACKAGE_SCOPE) {
-            const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
-            installName = `${scope}/${pkg.name}`;
-          } else {
-            installName = `@${repoOwner}/${pkg.name}`;
-          }
-        }
+        const installName = (!npmPublished && githubPublished)
+          ? getGitHubScopedName(pkg.name)
+          : pkg.name;
         
         return `${installName}@${pkg.version}`;
       })
