@@ -43,7 +43,7 @@ if [ -n "$PACKAGE_PATHS" ]; then
   echo "discovered-packages=[]" >> "$GITHUB_OUTPUT"
   echo "package-count=0" >> "$GITHUB_OUTPUT"
   
-  # Store discovered packages as empty for change detection
+  # Initialize discovered packages as empty when using explicit package-paths
   DISCOVERED_PACKAGES="[]"
   
 elif [ "$WORKSPACE_DETECTION" = "true" ]; then
@@ -168,13 +168,20 @@ if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ]; then
         echo "📦 Processing only $CHANGED_COUNT changed package(s)"
         echo ""
         
+        # Extract changed package paths into bash array for efficient lookup
+        # This is O(n) instead of O(n*m) with repeated jq calls
+        mapfile -t CHANGED_PATHS < <(echo "$CHANGED_PACKAGES_JSON" | jq -r '.[].path')
+        
         # Filter PACKAGE_ARRAY to only include changed packages
         FILTERED_ARRAY=()
         for pkg_path in "${PACKAGE_ARRAY[@]}"; do
           # Check if this package path is in the changed packages list
-          if echo "$CHANGED_PACKAGES_JSON" | jq -e --arg path "$pkg_path" '.[] | select(.path == $path)' > /dev/null 2>&1; then
-            FILTERED_ARRAY+=("$pkg_path")
-          fi
+          for changed_path in "${CHANGED_PATHS[@]}"; do
+            if [ "$pkg_path" = "$changed_path" ]; then
+              FILTERED_ARRAY+=("$pkg_path")
+              break
+            fi
+          done
         done
         
         PACKAGE_ARRAY=("${FILTERED_ARRAY[@]}")

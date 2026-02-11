@@ -63,7 +63,7 @@ case "$EVENT_NAME" in
       
       # Get all tags sorted by version
       set +e
-      PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
+      PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -F -v "${CURRENT_TAG}" | head -n 1)
       set -e
       
       if [ -n "$PREVIOUS_TAG" ]; then
@@ -122,7 +122,7 @@ if [ -z "$COMPARE_BASE" ] || [ "$SHALLOW_CLONE" = true ]; then
         git fetch --tags --depth=100 2>/dev/null
         fetch_status=$?
         if [ "$fetch_status" -eq 0 ]; then
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -F -v "${CURRENT_TAG}" | head -n 1)
           if [ -n "$PREVIOUS_TAG" ]; then
             COMPARE_BASE="$PREVIOUS_TAG"
             echo "✅ Successfully fetched tags, using: $COMPARE_BASE"
@@ -182,7 +182,7 @@ echo ""
 # Check if any root config files changed
 ALL_PACKAGES_CHANGED=false
 for config_file in "${ROOT_CONFIG_FILES[@]}"; do
-  if echo "$CHANGED_FILES" | grep -q "^${config_file}\$"; then
+  if echo "$CHANGED_FILES" | grep -q "^${config_file}$"; then
     echo "⚠️  Root config file changed: $config_file"
     ALL_PACKAGES_CHANGED=true
   fi
