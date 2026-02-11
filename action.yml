@@ -121,6 +121,11 @@ inputs:
     description: 'Auto-detect workspaces from root package.json'
     required: false
     default: 'true'
+  
+  changed-only:
+    description: 'Only build/publish packages that changed since last release'
+    required: false
+    default: 'true'
 
 outputs:
   # Version Outputs
@@ -178,6 +183,14 @@ outputs:
   package-count:
     description: 'Number of discovered publishable packages; when workspace-detection is not used this will be 0'
     value: ${{ steps.monorepo-orchestrator.outputs.package-count }}
+  
+  changed-packages:
+    description: 'JSON array of packages with changes'
+    value: ${{ steps.monorepo-orchestrator.outputs.changed-packages }}
+  
+  changed-count:
+    description: 'Number of changed packages'
+    value: ${{ steps.monorepo-orchestrator.outputs.changed-count }}
 
 runs:
   using: 'composite'
@@ -196,6 +209,7 @@ runs:
         PACKAGE_PATH: ${{ inputs.package-path }}
         PACKAGE_PATHS: ${{ inputs.package-paths }}
         WORKSPACE_DETECTION: ${{ inputs.workspace-detection }}
+        CHANGED_ONLY: ${{ inputs.changed-only }}
         BUILD_SCRIPT: ${{ inputs.build-script }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         VERSION_PREFIX: ${{ inputs.version-prefix }}
