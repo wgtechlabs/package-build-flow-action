@@ -47,9 +47,17 @@ if (validPackages.length === 0) {
 console.log(`📦 Processing ${validPackages.length} package(s)`);
 console.log('');
 
-// Build package name to metadata map
+// Build package name to metadata map and detect duplicates
 const packageMap = new Map();
 validPackages.forEach(pkg => {
+  if (packageMap.has(pkg.name)) {
+    const existing = packageMap.get(pkg.name);
+    console.error('❌ Error: Duplicate package name detected in workspace');
+    console.error(`   Package name: ${pkg.name}`);
+    console.error(`   First package path: ${existing && existing.path ? existing.path : 'unknown'}`);
+    console.error(`   Conflicting package path: ${pkg.path}`);
+    process.exit(1);
+  }
   packageMap.set(pkg.name, pkg);
 });
 
@@ -131,11 +139,11 @@ const sorted = [];
 const queue = [];
 
 // Start with packages that have no dependencies
-packages.forEach(pkg => {
-  if (!pkg.name) return;
-  
-  if (inDegree.get(pkg.name) === 0) {
+const enqueued = new Set();
+validPackages.forEach(pkg => {
+  if (inDegree.get(pkg.name) === 0 && !enqueued.has(pkg.name)) {
     queue.push(pkg.name);
+    enqueued.add(pkg.name);
   }
 });
 

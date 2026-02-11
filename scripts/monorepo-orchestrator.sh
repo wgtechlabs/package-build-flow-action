@@ -285,6 +285,15 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
       if [ -n "$ORDERED_PACKAGES_JSON" ] && [ "$ORDERED_PACKAGES_JSON" != "null" ]; then
         # Update PACKAGE_ARRAY with ordered paths using mapfile to avoid comma issues
         mapfile -t PACKAGE_ARRAY < <(echo "$ORDERED_PACKAGES_JSON" | jq -r '.[].path')
+        
+        # Recompute total packages after reordering and ensure we still have work to do
+        TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+        if [ "$TOTAL_PACKAGES" -eq 0 ]; then
+          echo "❌ Error: Dependency ordering produced an empty package list"
+          rm -f "$DEP_ORDER_OUTPUT" "$DEP_ORDER_OUTPUTS"
+          exit 1
+        fi
+        
         echo "✅ Packages reordered based on dependencies"
       else
         echo "⚠️  Warning: Could not parse ordered packages, using original order"
