@@ -30,16 +30,26 @@ if (!Array.isArray(packages) || packages.length === 0) {
   process.exit(1);
 }
 
-console.log(`📦 Processing ${packages.length} package(s)`);
+// Filter packages upfront to only valid entries with both name and path
+const validPackages = packages.filter(pkg => {
+  if (!pkg || !pkg.name || !pkg.path) {
+    console.error(`⚠️  Warning: Package missing name or path, skipping: ${JSON.stringify(pkg)}`);
+    return false;
+  }
+  return true;
+});
+
+if (validPackages.length === 0) {
+  console.error('❌ Error: No valid packages with both name and path provided');
+  process.exit(1);
+}
+
+console.log(`📦 Processing ${validPackages.length} package(s)`);
 console.log('');
 
 // Build package name to metadata map
 const packageMap = new Map();
-packages.forEach(pkg => {
-  if (!pkg.name || !pkg.path) {
-    console.error(`⚠️  Warning: Package missing name or path, skipping: ${JSON.stringify(pkg)}`);
-    return;
-  }
+validPackages.forEach(pkg => {
   packageMap.set(pkg.name, pkg);
 });
 
@@ -86,18 +96,14 @@ const dependents = new Map(); // package name -> array of packages that depend o
 const inDegree = new Map(); // package name -> count of dependencies
 
 // Initialize maps
-packages.forEach(pkg => {
-  if (!pkg.name) return;
-  
+validPackages.forEach(pkg => {
   dependencyGraph.set(pkg.name, []);
   dependents.set(pkg.name, []);
   inDegree.set(pkg.name, 0);
 });
 
 // Build the graph
-packages.forEach(pkg => {
-  if (!pkg.name) return;
-  
+validPackages.forEach(pkg => {
   const deps = getWorkspaceDependencies(pkg.path);
   dependencyGraph.set(pkg.name, deps);
   
@@ -151,13 +157,13 @@ while (queue.length > 0) {
 }
 
 // Check for circular dependencies
-if (sorted.length !== packages.filter(p => p.name).length) {
+if (sorted.length !== validPackages.length) {
   console.error('');
   
   // Find packages involved in the cycle
   const cyclePackages = [];
-  packages.forEach(pkg => {
-    if (pkg.name && inDegree.get(pkg.name) > 0) {
+  validPackages.forEach(pkg => {
+    if (inDegree.get(pkg.name) > 0) {
       cyclePackages.push(pkg.name);
     }
   });

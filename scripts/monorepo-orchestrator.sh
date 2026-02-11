@@ -258,9 +258,9 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
   done
   
   # Filter discovered packages to only those in PACKAGE_ARRAY
-  # Using IN() for O(n) membership check instead of index() which would be O(n*m)
+  # Using index() for compatibility with jq 1.5+ (IN() requires jq 1.6+)
   PACKAGES_FOR_ORDERING=$(echo "$DISCOVERED_PACKAGES" | jq --argjson paths "$(printf '%s\n' "${!PATH_LOOKUP[@]}" | jq -R . | jq -s .)" '
-    [.[] | select(.path | IN($paths[]))]
+    [.[] | select(.path as $p | $paths | index($p) != null)]
   ')
   
   # Run dependency order resolution script
