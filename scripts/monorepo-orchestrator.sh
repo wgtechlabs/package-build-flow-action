@@ -121,7 +121,7 @@ echo ""
 
 # Change Detection (only for monorepo with workspace discovery)
 # Skip if using explicit package-paths (no directory metadata available)
-if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PACKAGES" != "[]" ]; then
+if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$(echo "$DISCOVERED_PACKAGES" | jq '. | length')" -gt 0 ]; then
   echo "🔍 Running change detection..."
   echo ""
   
