@@ -43,6 +43,9 @@ if [ -n "$PACKAGE_PATHS" ]; then
   echo "discovered-packages=[]" >> "$GITHUB_OUTPUT"
   echo "package-count=0" >> "$GITHUB_OUTPUT"
   
+  # Initialize discovered packages as empty when using explicit package-paths
+  DISCOVERED_PACKAGES="[]"
+  
 elif [ "$WORKSPACE_DETECTION" = "true" ]; then
   echo "🔍 Auto-discovering packages from workspace configuration"
   echo ""
@@ -115,6 +118,128 @@ FAILED_PACKAGES=0
 
 echo "📦 Found $TOTAL_PACKAGES package(s) to process"
 echo ""
+
+# Change Detection (only for monorepo with workspace discovery)
+# Skip if using explicit package-paths (no directory metadata available)
+DISCOVERED_PKG_COUNT=$(echo "$DISCOVERED_PACKAGES" | jq '. | length')
+if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PKG_COUNT" -gt 0 ]; then
+  echo "🔍 Running change detection..."
+  echo ""
+  
+  # Run change detection script
+  CHANGE_DETECTION_OUTPUT=$(mktemp)
+  CHANGE_DETECTION_OUTPUTS=$(mktemp)
+  
+  # Save current GITHUB_OUTPUT location
+  ORIGINAL_OUTPUT="$GITHUB_OUTPUT"
+  # Use temporary file for change detection outputs
+  export GITHUB_OUTPUT="$CHANGE_DETECTION_OUTPUTS"
+  
+  # Pass discovered packages to change detection
+  export DISCOVERED_PACKAGES_JSON="$DISCOVERED_PACKAGES"
+  
+  if bash "$ACTION_PATH/scripts/detect-changed-packages.sh" > "$CHANGE_DETECTION_OUTPUT" 2>&1; then
+    cat "$CHANGE_DETECTION_OUTPUT"
+    
+    # Read outputs from temporary file
+    if [ -f "$CHANGE_DETECTION_OUTPUTS" ]; then
+      CHANGED_PACKAGES_JSON=$(grep "^changed-packages=" "$CHANGE_DETECTION_OUTPUTS" | tail -1 | cut -d= -f2-)
+      CHANGED_COUNT=$(grep "^changed-count=" "$CHANGE_DETECTION_OUTPUTS" | tail -1 | cut -d= -f2-)
+      ALL_PACKAGES_CHANGED=$(grep "^all-packages-changed=" "$CHANGE_DETECTION_OUTPUTS" | tail -1 | cut -d= -f2-)
+      
+      # Copy change detection outputs to the original GITHUB_OUTPUT
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+      echo "changed-packages=$CHANGED_PACKAGES_JSON" >> "$GITHUB_OUTPUT"
+      echo "changed-count=$CHANGED_COUNT" >> "$GITHUB_OUTPUT"
+      
+      # Filter packages based on changes
+      if [ "$ALL_PACKAGES_CHANGED" = "true" ] || [ "$CHANGED_COUNT" = "-1" ]; then
+        echo ""
+        echo "📦 Processing all $TOTAL_PACKAGES packages"
+        echo ""
+      elif [ "$CHANGED_COUNT" = "0" ]; then
+        echo ""
+        echo "ℹ️  No packages changed - nothing to process"
+        echo ""
+        # Set empty results and exit successfully
+        echo "build-results=[]" >> "$GITHUB_OUTPUT"
+        rm -f "$CHANGE_DETECTION_OUTPUT" "$CHANGE_DETECTION_OUTPUTS"
+        exit 0
+      else
+        echo ""
+        echo "📦 Processing only $CHANGED_COUNT changed package(s)"
+        echo ""
+        
+        # Validate CHANGED_PACKAGES_JSON is valid JSON
+        if ! echo "$CHANGED_PACKAGES_JSON" | jq -e . >/dev/null 2>&1; then
+          echo "⚠️  Warning: Invalid JSON in changed packages output"
+          echo "    First 100 chars: ${CHANGED_PACKAGES_JSON:0:100}"
+          echo "🔄 Falling back to processing all packages"
+          echo ""
+        else
+          # Extract changed package paths into bash array
+          mapfile -t CHANGED_PATHS < <(echo "$CHANGED_PACKAGES_JSON" | jq -r '.[].path')
+          
+          # Build associative array for O(1) membership checks
+          declare -A CHANGED_LOOKUP=()
+          for changed_path in "${CHANGED_PATHS[@]}"; do
+            CHANGED_LOOKUP["$changed_path"]=1
+          done
+          
+          # Filter PACKAGE_ARRAY to only include changed packages
+          FILTERED_ARRAY=()
+          for pkg_path in "${PACKAGE_ARRAY[@]}"; do
+            # Check if this package path is in the changed packages set
+            if [ -n "${CHANGED_LOOKUP[$pkg_path]+_}" ]; then
+              FILTERED_ARRAY+=("$pkg_path")
+            fi
+          done
+          
+          PACKAGE_ARRAY=("${FILTERED_ARRAY[@]}")
+          TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+          
+          if [ "$TOTAL_PACKAGES" -eq 0 ]; then
+            echo "ℹ️  No changed packages to process after filtering"
+            echo ""
+            echo "build-results=[]" >> "$GITHUB_OUTPUT"
+            rm -f "$CHANGE_DETECTION_OUTPUT" "$CHANGE_DETECTION_OUTPUTS"
+            exit 0
+          fi
+        fi
+      fi
+      
+      rm -f "$CHANGE_DETECTION_OUTPUT" "$CHANGE_DETECTION_OUTPUTS"
+    else
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+      echo "⚠️  Warning: Failed to read change detection results"
+      echo "🔄 Falling back to processing all packages"
+      echo ""
+      echo "changed-packages=[]" >> "$GITHUB_OUTPUT"
+      echo "changed-count=-1" >> "$GITHUB_OUTPUT"
+      rm -f "$CHANGE_DETECTION_OUTPUT" "$CHANGE_DETECTION_OUTPUTS"
+    fi
+  else
+    cat "$CHANGE_DETECTION_OUTPUT"
+    export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+    echo "⚠️  Warning: Change detection failed"
+    echo "🔄 Falling back to processing all packages"
+    echo ""
+    echo "changed-packages=[]" >> "$GITHUB_OUTPUT"
+    echo "changed-count=-1" >> "$GITHUB_OUTPUT"
+    rm -f "$CHANGE_DETECTION_OUTPUT" "$CHANGE_DETECTION_OUTPUTS"
+  fi
+else
+  # Change detection disabled or not applicable
+  if [ "$CHANGED_ONLY" != "true" ]; then
+    echo "ℹ️  Change detection disabled (changed-only: false)"
+  elif [ "$WORKSPACE_DETECTION" != "true" ]; then
+    echo "ℹ️  Change detection not applicable (workspace-detection: false)"
+  fi
+  echo "📦 Processing all $TOTAL_PACKAGES packages"
+  echo ""
+  echo "changed-packages=[]" >> "$GITHUB_OUTPUT"
+  echo "changed-count=-1" >> "$GITHUB_OUTPUT"
+fi
 
 # Process each package
 for i in "${!PACKAGE_ARRAY[@]}"; do
