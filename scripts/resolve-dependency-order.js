@@ -44,6 +44,7 @@ packages.forEach(pkg => {
 });
 
 // Extract workspace dependencies from a package
+// packagePath: full path to package.json file (e.g., "core/package.json")
 function getWorkspaceDependencies(packagePath) {
   try {
     const packageJsonPath = path.resolve(packagePath);
