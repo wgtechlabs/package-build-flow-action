@@ -121,7 +121,7 @@ if [ -z "$COMPARE_BASE" ] || [ "$SHALLOW_CLONE" = true ]; then
         # Fetch tags
         git fetch --tags --depth=100 2>/dev/null
         fetch_status=$?
-        if [ "$fetch_status" -eq 0 ]; then
+        if [ "$fetch_status" -eq 0 ] && [ -n "$CURRENT_TAG" ]; then
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -F -v "${CURRENT_TAG}" | head -n 1)
           if [ -n "$PREVIOUS_TAG" ]; then
             COMPARE_BASE="$PREVIOUS_TAG"
