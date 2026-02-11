@@ -142,8 +142,19 @@ while IFS= read -r pattern; do
         if [ -f "$PKG_PATH" ]; then
           # Normalize path (remove leading ./)
           PKG_PATH_NORMALIZED="${PKG_PATH#./}"
+          PKG_DIR="${dir#./}"
           
-          # Check for duplicates
+          # Convert path to be relative to original working directory FIRST
+          if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
+            # Calculate relative path from original dir to root dir
+            REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
+            if [ "$REL_ROOT" != "." ]; then
+              PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
+              PKG_DIR="$REL_ROOT/$PKG_DIR"
+            fi
+          fi
+          
+          # Check for duplicates AFTER path normalization
           if [ -n "${DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]}" ]; then
             echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (already discovered)"
             continue
@@ -161,18 +172,6 @@ while IFS= read -r pattern; do
           # Extract package metadata
           PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
           PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
-          
-          PKG_DIR="${dir#./}"
-          
-          # Convert path to be relative to original working directory
-          if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
-            # Calculate relative path from original dir to root dir
-            REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
-            if [ "$REL_ROOT" != "." ]; then
-              PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
-              PKG_DIR="$REL_ROOT/$PKG_DIR"
-            fi
-          fi
           
           echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
           
@@ -199,8 +198,19 @@ while IFS= read -r pattern; do
       if [ -f "$PKG_PATH" ]; then
         # Normalize path (remove leading ./)
         PKG_PATH_NORMALIZED="${PKG_PATH#./}"
+        PKG_DIR="${pattern#./}"
         
-        # Check for duplicates
+        # Convert path to be relative to original working directory FIRST
+        if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
+          # Calculate relative path from original dir to root dir
+          REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
+          if [ "$REL_ROOT" != "." ]; then
+            PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
+            PKG_DIR="$REL_ROOT/$PKG_DIR"
+          fi
+        fi
+        
+        # Check for duplicates AFTER path normalization
         if [ -n "${DISCOVERED_PATHS[$PKG_PATH_NORMALIZED]}" ]; then
           echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (already discovered)"
           continue
@@ -218,18 +228,6 @@ while IFS= read -r pattern; do
         # Extract package metadata
         PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
         PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
-        
-        PKG_DIR="${pattern#./}"
-        
-        # Convert path to be relative to original working directory
-        if [[ "$ROOT_DIR" != "$ORIGINAL_DIR" ]]; then
-          # Calculate relative path from original dir to root dir
-          REL_ROOT=$(realpath --relative-to="$ORIGINAL_DIR" "$ROOT_DIR" 2>/dev/null || echo "$ROOT_DIR")
-          if [ "$REL_ROOT" != "." ]; then
-            PKG_PATH_NORMALIZED="$REL_ROOT/$PKG_PATH_NORMALIZED"
-            PKG_DIR="$REL_ROOT/$PKG_DIR"
-          fi
-        fi
         
         echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
         
