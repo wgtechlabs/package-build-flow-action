@@ -204,7 +204,7 @@ echo "$BUILD_RESULTS" | jq '.'
 echo ""
 
 # Set outputs
-echo "build-results=$BUILD_RESULTS" >> "$GITHUB_OUTPUT"
+echo "build-results=$(echo "$BUILD_RESULTS" | jq -c '.')" >> "$GITHUB_OUTPUT"
 
 # Exit with error if any package failed
 if [ "$FAILED_PACKAGES" -gt 0 ]; then
