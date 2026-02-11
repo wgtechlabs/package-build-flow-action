@@ -10,6 +10,17 @@ echo "📊 Generating outputs..."
 if [ "$MONOREPO_MODE" = "true" ]; then
   echo "🎯 Monorepo mode - generating aggregated outputs"
   
+  # Validate JSON inputs
+  if ! echo "$BUILD_RESULTS_JSON" | jq -e . >/dev/null 2>&1; then
+    echo "⚠️  Warning: BUILD_RESULTS_JSON is invalid or empty, using defaults"
+    BUILD_RESULTS_JSON='[]'
+  fi
+  
+  if ! echo "$CHANGED_PACKAGES_JSON" | jq -e . >/dev/null 2>&1; then
+    echo "⚠️  Warning: CHANGED_PACKAGES_JSON is invalid or empty, using defaults"
+    CHANGED_PACKAGES_JSON='[]'
+  fi
+  
   # Parse BUILD_RESULTS_JSON to extract package information
   PACKAGES_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.result == "success") | .name] | join(",")')
   PACKAGES_FAILED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.result == "failed") | .name] | join(",")')

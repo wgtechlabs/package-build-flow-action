@@ -159,6 +159,7 @@ if (MONOREPO_MODE) {
   });
   
   // Build quick install section
+  // Note: buildResults only contains changed packages, so successfulPackages = successfully published changed packages
   const successfulPackages = buildResults.filter(r => r.result === 'success');
   let quickInstall = '';
   
