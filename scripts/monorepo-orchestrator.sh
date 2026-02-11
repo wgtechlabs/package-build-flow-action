@@ -17,6 +17,18 @@ fi
 # Parse comma-separated package paths into an array
 IFS=',' read -ra PACKAGE_ARRAY <<< "$PACKAGE_PATHS"
 
+# Filter out empty entries after trimming
+FILTERED_PACKAGES=()
+for pkg in "${PACKAGE_ARRAY[@]}"; do
+  # Trim whitespace
+  pkg=$(echo "$pkg" | xargs)
+  # Only add non-empty paths
+  if [ -n "$pkg" ]; then
+    FILTERED_PACKAGES+=("$pkg")
+  fi
+done
+PACKAGE_ARRAY=("${FILTERED_PACKAGES[@]}")
+
 # Initialize results array
 BUILD_RESULTS="[]"
 
@@ -31,8 +43,6 @@ echo ""
 # Process each package
 for i in "${!PACKAGE_ARRAY[@]}"; do
   PACKAGE_PATH="${PACKAGE_ARRAY[$i]}"
-  # Trim whitespace
-  PACKAGE_PATH=$(echo "$PACKAGE_PATH" | xargs)
   
   PACKAGE_NUM=$((i + 1))
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -45,7 +55,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     echo "❌ Error: package.json not found at '$PACKAGE_PATH'"
     PACKAGE_NAME="unknown"
     PACKAGE_VERSION="unknown"
-    RESULT="error"
+    RESULT="failed"
     ERROR_MESSAGE="package.json not found"
     FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
     
@@ -97,7 +107,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     cat "$TEMP_OUTPUT"
     echo "❌ Flow detection failed"
     PACKAGE_VERSION="unknown"
-    RESULT="error"
+    RESULT="failed"
     ERROR_MESSAGE="Flow detection failed"
     FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
     
@@ -111,17 +121,32 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     continue
   fi
   
-  # Step 2: Configure registries (skip if publish disabled or dry-run)
+  # Step 2: Configure registries (always run if tokens are provided, to support private dependencies)
   echo ""
-  if [ "$PUBLISH_ENABLED" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+  SKIP_REGISTRY_CONFIG=false
+  
+  # Skip only if both conditions are met:
+  # 1. Publishing is disabled or dry-run mode
+  # 2. No tokens are provided (indicating no private registry dependencies)
+  if [ "$PUBLISH_ENABLED" != "true" ] || [ "$DRY_RUN" = "true" ]; then
+    if [ -z "$NPM_TOKEN" ] && [ -z "$GITHUB_TOKEN" ]; then
+      SKIP_REGISTRY_CONFIG=true
+      echo "⏭️  Skipping registry configuration (no tokens provided and publish disabled/dry-run)"
+    else
+      echo "⚙️  Configuring registries (tokens provided for potential private dependencies)..."
+    fi
+  else
     echo "⚙️  Configuring registries..."
+  fi
+  
+  if [ "$SKIP_REGISTRY_CONFIG" = "false" ]; then
     if bash "$ACTION_PATH/scripts/configure-registries.sh" > "$TEMP_OUTPUT" 2>&1; then
       cat "$TEMP_OUTPUT"
       echo "✅ Registry configuration completed"
     else
       cat "$TEMP_OUTPUT"
       echo "❌ Registry configuration failed"
-      RESULT="error"
+      RESULT="failed"
       ERROR_MESSAGE="Registry configuration failed"
       FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
       
@@ -134,8 +159,6 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       echo ""
       continue
     fi
-  else
-    echo "⏭️  Skipping registry configuration (publish disabled or dry-run mode)"
   fi
   
   # Step 3: Build and publish
@@ -166,8 +189,19 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       echo "✅ Security audit completed"
     else
       cat "$TEMP_OUTPUT"
-      echo "⚠️  Security audit failed (but continuing)"
-      # Don't mark as failed if only audit fails
+      if [ "$FAIL_ON_AUDIT" = "true" ]; then
+        echo "❌ Security audit failed and fail-on-audit is enabled; marking package as failed"
+        # Only adjust counts if this package was previously considered successful
+        if [ "$RESULT" = "success" ]; then
+          RESULT="failed"
+          ERROR_MESSAGE="Security audit failed"
+          SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES - 1))
+          FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
+        fi
+      else
+        echo "⚠️  Security audit failed (but continuing)"
+        # Don't mark as failed if only audit fails and fail-on-audit is disabled
+      fi
     fi
   else
     echo "⏭️  Security audit disabled"
