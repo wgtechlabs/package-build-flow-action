@@ -30,16 +30,28 @@ if (!Array.isArray(packages) || packages.length === 0) {
   process.exit(1);
 }
 
+// Filter packages upfront to only valid entries with both name and path
+const validPackages = packages.filter(pkg => {
+  if (!pkg || !pkg.name || !pkg.path) {
+    console.error(`⚠️  Warning: Package missing name or path, skipping: ${JSON.stringify(pkg)}`);
+    return false;
+  }
+  return true;
+});
+
+if (validPackages.length === 0) {
+  console.error('❌ Error: No valid packages with both name and path provided');
+  process.exit(1);
+}
+
+packages = validPackages;
+
 console.log(`📦 Processing ${packages.length} package(s)`);
 console.log('');
 
 // Build package name to metadata map
 const packageMap = new Map();
 packages.forEach(pkg => {
-  if (!pkg.name || !pkg.path) {
-    console.error(`⚠️  Warning: Package missing name or path, skipping: ${JSON.stringify(pkg)}`);
-    return;
-  }
   packageMap.set(pkg.name, pkg);
 });
 
@@ -96,7 +108,8 @@ packages.forEach(pkg => {
 
 // Build the graph
 packages.forEach(pkg => {
-  if (!pkg.name) return;
+  // Skip packages without name or path (should not happen after filtering, but defensive check)
+  if (!pkg.name || !pkg.path) return;
   
   const deps = getWorkspaceDependencies(pkg.path);
   dependencyGraph.set(pkg.name, deps);
