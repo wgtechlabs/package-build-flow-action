@@ -20,7 +20,8 @@ echo "📄 Reading workspace patterns from: $ROOT_PACKAGE_PATH"
 # Extract workspaces field from package.json
 # Handle both array format and object format (with "packages" key)
 set +e
-WORKSPACES_RAW=$(jq -r '.workspaces' "$ROOT_PACKAGE_PATH" 2>/dev/null)
+# Use -c to keep JSON structure for proper re-parsing
+WORKSPACES_RAW=$(jq -c '.workspaces' "$ROOT_PACKAGE_PATH" 2>/dev/null)
 jq_status=$?
 set -e
 
@@ -39,17 +40,39 @@ if [ "$WORKSPACES_RAW" = "null" ] || [ -z "$WORKSPACES_RAW" ]; then
 fi
 
 # Handle object format (Yarn berry/npm v7+)
-WORKSPACES_TYPE=$(echo "$WORKSPACES_RAW" | jq -r 'type')
+# Query type directly from the JSON structure
+set +e
+WORKSPACES_TYPE=$(echo "$WORKSPACES_RAW" | jq -r 'type' 2>/dev/null)
+type_status=$?
+set -e
+
+if [ "$type_status" -ne 0 ]; then
+  echo "❌ Error: Failed to parse workspaces field (invalid JSON structure)"
+  exit 1
+fi
+
 if [ "$WORKSPACES_TYPE" = "object" ]; then
   # Extract packages array from object
+  set +e
   WORKSPACES=$(echo "$WORKSPACES_RAW" | jq -r '.packages // empty | .[]' 2>/dev/null)
-  if [ -z "$WORKSPACES" ]; then
+  packages_status=$?
+  set -e
+  
+  if [ "$packages_status" -ne 0 ] || [ -z "$WORKSPACES" ]; then
     echo "❌ Error: workspaces is an object but has no 'packages' array"
     exit 1
   fi
 elif [ "$WORKSPACES_TYPE" = "array" ]; then
   # Direct array format
+  set +e
   WORKSPACES=$(echo "$WORKSPACES_RAW" | jq -r '.[]' 2>/dev/null)
+  array_status=$?
+  set -e
+  
+  if [ "$array_status" -ne 0 ]; then
+    echo "❌ Error: Failed to parse workspaces array"
+    exit 1
+  fi
 else
   echo "❌ Error: workspaces field must be an array or object with packages array"
   exit 1
@@ -160,8 +183,16 @@ while IFS= read -r pattern; do
             continue
           fi
           
-          # Check if package is private
+          # Check if package is private - handle jq errors gracefully
+          set +e
           IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
+          jq_status=$?
+          set -e
+          
+          if [ "$jq_status" -ne 0 ]; then
+            echo "    ⚠️  Warning: Failed to parse $PKG_PATH (invalid JSON), skipping"
+            continue
+          fi
           
           if [ "$IS_PRIVATE" = "true" ]; then
             echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (private: true)"
@@ -169,9 +200,23 @@ while IFS= read -r pattern; do
             continue
           fi
           
-          # Extract package metadata
+          # Extract package metadata - handle jq errors gracefully
+          set +e
           PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
+          name_status=$?
           PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
+          version_status=$?
+          set -e
+          
+          if [ "$name_status" -ne 0 ] || [ "$version_status" -ne 0 ]; then
+            echo "    ⚠️  Warning: Failed to read metadata from $PKG_PATH, skipping"
+            continue
+          fi
+          
+          if [ "$PKG_NAME" = "null" ] || [ "$PKG_NAME" = "unknown" ] || [ -z "$PKG_NAME" ]; then
+            echo "    ⚠️  Warning: No package name in $PKG_PATH, skipping"
+            continue
+          fi
           
           echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
           
@@ -216,8 +261,16 @@ while IFS= read -r pattern; do
           continue
         fi
         
-        # Check if package is private
+        # Check if package is private - handle jq errors gracefully
+        set +e
         IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
+        jq_status=$?
+        set -e
+        
+        if [ "$jq_status" -ne 0 ]; then
+          echo "    ⚠️  Warning: Failed to parse $PKG_PATH (invalid JSON), skipping"
+          continue
+        fi
         
         if [ "$IS_PRIVATE" = "true" ]; then
           echo "    ⏭️  Skipping $PKG_PATH_NORMALIZED (private: true)"
@@ -225,9 +278,23 @@ while IFS= read -r pattern; do
           continue
         fi
         
-        # Extract package metadata
+        # Extract package metadata - handle jq errors gracefully
+        set +e
         PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
+        name_status=$?
         PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
+        version_status=$?
+        set -e
+        
+        if [ "$name_status" -ne 0 ] || [ "$version_status" -ne 0 ]; then
+          echo "    ⚠️  Warning: Failed to read metadata from $PKG_PATH, skipping"
+          continue
+        fi
+        
+        if [ "$PKG_NAME" = "null" ] || [ "$PKG_NAME" = "unknown" ] || [ -z "$PKG_NAME" ]; then
+          echo "    ⚠️  Warning: No package name in $PKG_PATH, skipping"
+          continue
+        fi
         
         echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
         
