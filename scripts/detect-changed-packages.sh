@@ -98,6 +98,7 @@ if [ -z "$COMPARE_BASE" ] || [ "$SHALLOW_CLONE" = true ]; then
     case "$EVENT_NAME" in
       pull_request)
         # Prefer fetching the specific PR base commit SHA for deterministic diffs
+        # '// empty' provides empty string fallback if base.sha is null/missing
         PR_BASE_SHA=$(echo "$GITHUB_CONTEXT" | jq -r '.event.pull_request.base.sha // empty')
         fetch_status=1
         if [ -n "$PR_BASE_SHA" ]; then
