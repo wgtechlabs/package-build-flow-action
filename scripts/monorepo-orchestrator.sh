@@ -37,6 +37,11 @@ TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
 SUCCESSFUL_PACKAGES=0
 FAILED_PACKAGES=0
 
+if [ "$TOTAL_PACKAGES" -eq 0 ]; then
+  echo "❌ Error: No valid package paths provided after filtering"
+  exit 1
+fi
+
 echo "📦 Found $TOTAL_PACKAGES package(s) to process"
 echo ""
 
