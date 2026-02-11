@@ -1,0 +1,60 @@
+name: Monorepo Build and Publish
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  release:
+    types: [published]
+
+jobs:
+  build-monorepo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build and Publish Multiple Packages
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v2
+        with:
+          # Enable monorepo mode
+          monorepo: 'true'
+          
+          # List all packages to process (comma-separated)
+          package-paths: 'core/package.json,plugins/plugin-discord/package.json,apps/cli/package.json'
+          
+          # Registry configuration
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Branch configuration (optional)
+          main-branch: 'main'
+          dev-branch: 'dev'
+          
+          # Build configuration (optional)
+          build-script: 'build'
+          package-manager: 'auto'
+          
+          # Publishing configuration (optional)
+          publish-enabled: 'true'
+          access: 'public'
+          
+          # Security configuration (optional)
+          audit-enabled: 'true'
+          fail-on-audit: 'false'
+      
+      - name: Display Build Results
+        run: |
+          echo "Build Results:"
+          echo '${{ steps.build.outputs.build-results }}' | jq '.'
