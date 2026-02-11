@@ -24,10 +24,12 @@ const AUDIT_ENABLED = process.env.AUDIT_ENABLED === 'true';
 const PR_COMMENT_TEMPLATE = process.env.PR_COMMENT_TEMPLATE || '';
 const NPM_PUBLISHED = process.env.NPM_PUBLISHED === 'true';
 const GITHUB_PUBLISHED = process.env.GITHUB_PUBLISHED === 'true';
+const MONOREPO_MODE = process.env.MONOREPO_MODE === 'true';
 
-// Get package details
-const packageJson = JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8'));
-const packageName = packageJson.name;
+// Monorepo-specific variables
+const BUILD_RESULTS_JSON = process.env.BUILD_RESULTS_JSON || '[]';
+const DISCOVERED_PACKAGES_JSON = process.env.DISCOVERED_PACKAGES_JSON || '[]';
+const CHANGED_PACKAGES_JSON = process.env.CHANGED_PACKAGES_JSON || '[]';
 
 // Get PR number
 const prNumber = GITHUB_CONTEXT.event?.pull_request?.number;
@@ -41,7 +43,7 @@ const [owner, repoName] = repo.split('/');
 
 console.log('💬 Generating PR comment...');
 console.log(`  PR: #${prNumber}`);
-console.log(`  Package: ${packageName}@${PACKAGE_VERSION}`);
+console.log(`  Mode: ${MONOREPO_MODE ? 'Monorepo' : 'Single Package'}`);
 console.log(`  Flow Type: ${BUILD_FLOW_TYPE}`);
 
 // Build flow descriptions
@@ -74,48 +76,6 @@ const flowDescriptions = {
 };
 
 const flowInfo = flowDescriptions[BUILD_FLOW_TYPE] || flowDescriptions.wip;
-
-// Generate installation instructions
-let installCommands = [];
-
-if ((REGISTRY === 'npm' || REGISTRY === 'both') && NPM_PUBLISHED) {
-  installCommands.push({
-    registry: 'NPM Registry',
-    commands: [
-      `npm install ${packageName}@${PACKAGE_VERSION}`,
-      `npm install ${packageName}@${NPM_TAG}  # Use dist-tag`
-    ],
-    url: `${NPM_REGISTRY_URL}/${packageName}`
-  });
-}
-
-if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
-  let ghPackageName = packageName;
-  let wasAutoScoped = false;
-  
-  if (!packageName.startsWith('@')) {
-    if (PACKAGE_SCOPE) {
-      // Ensure scope starts with @
-      const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
-      ghPackageName = `${scope}/${packageName}`;
-    } else {
-      // Auto-scope using repository owner
-      const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
-      ghPackageName = `@${repoOwner}/${packageName}`;
-      wasAutoScoped = true;
-    }
-  }
-  
-  installCommands.push({
-    registry: 'GitHub Packages',
-    commands: [
-      `npm install ${ghPackageName}@${PACKAGE_VERSION}`,
-      `npm install ${ghPackageName}@${NPM_TAG}  # Use dist-tag`
-    ],
-    url: `https://github.com/${owner}/${repoName}/packages`,
-    note: wasAutoScoped ? `✨ Auto-scoped as \`${ghPackageName}\` (from repository owner)` : undefined
-  });
-}
 
 // Load audit results if available
 let auditSection = '';
@@ -153,51 +113,161 @@ if (AUDIT_ENABLED) {
   }
 }
 
-// Build comment body
+// Generate comment body
 let commentBody;
 
-if (PR_COMMENT_TEMPLATE) {
-  // Use custom template
-  commentBody = PR_COMMENT_TEMPLATE
-    .replace(/{BUILD_FLOW}/g, BUILD_FLOW_TYPE)
-    .replace(/{PACKAGE_VERSION}/g, PACKAGE_VERSION)
-    .replace(/{NPM_INSTALL}/g, installCommands.find(c => c.registry === 'NPM Registry')?.commands[0] || 'N/A')
-    .replace(/{GITHUB_INSTALL}/g, installCommands.find(c => c.registry === 'GitHub Packages')?.commands[0] || 'N/A')
-    .replace(/{AUDIT_RESULTS}/g, auditSection);
-} else {
-  // Generate default comment
-  commentBody = `## ${flowInfo.emoji} ${flowInfo.title}
-
-${flowInfo.description}
-
-### 📦 Package Information
-
-- **Package:** \`${packageName}\`
-- **Version:** \`${PACKAGE_VERSION}\`
-- **Dist-tag:** \`${NPM_TAG}\`
-
-### 📥 Installation Instructions
-
-`;
-
-  if (installCommands.length === 0) {
-    commentBody += '⚠️  Package was not published to any registry.\n';
+if (MONOREPO_MODE) {
+  // Monorepo mode
+  console.log('  Generating monorepo comment...');
+  
+  const buildResults = JSON.parse(BUILD_RESULTS_JSON);
+  const discoveredPackages = JSON.parse(DISCOVERED_PACKAGES_JSON);
+  const changedPackages = JSON.parse(CHANGED_PACKAGES_JSON);
+  
+  console.log(`  Build results: ${buildResults.length} packages`);
+  console.log(`  Discovered packages: ${discoveredPackages.length} packages`);
+  console.log(`  Changed packages: ${changedPackages.length} packages`);
+  
+  // Create a map of build results by package name
+  const buildResultsMap = {};
+  buildResults.forEach(result => {
+    buildResultsMap[result.name] = result;
+  });
+  
+  // Build the packages table
+  let packagesTable = '| Package | Version | Status | Install |\n';
+  packagesTable += '|---------|---------|--------|---------|\n';
+  
+  discoveredPackages.forEach(pkg => {
+    const buildResult = buildResultsMap[pkg.name];
+    
+    if (buildResult && buildResult.result === 'success') {
+      // Successfully published
+      const version = `\`${buildResult.version}\``;
+      const status = '✅ Published';
+      const installCmd = `\`npm i ${pkg.name}@${buildResult.version}\``;
+      packagesTable += `| ${pkg.name} | ${version} | ${status} | ${installCmd} |\n`;
+    } else if (buildResult && buildResult.result === 'failed') {
+      // Failed
+      const status = '❌ Failed';
+      packagesTable += `| ${pkg.name} | — | ${status} | — |\n`;
+    } else {
+      // Unchanged (not in build results)
+      const status = '⏭️ Unchanged';
+      packagesTable += `| ${pkg.name} | — | ${status} | — |\n`;
+    }
+  });
+  
+  // Build quick install section
+  const successfulPackages = buildResults.filter(r => r.result === 'success');
+  let quickInstall = '';
+  
+  if (successfulPackages.length > 0) {
+    const installCommands = successfulPackages.map(pkg => `${pkg.name}@${pkg.version}`).join(' ');
+    quickInstall = `### 📥 Quick Install (changed packages)\n\`\`\`bash\nnpm i ${installCommands}\n\`\`\`\n`;
   } else {
-    installCommands.forEach(({ registry, commands, url, note }) => {
-      commentBody += `#### ${registry}\n\n\`\`\`bash\n${commands.join('\n')}\n\`\`\`\n\n`;
-      if (note) {
-        commentBody += `${note}\n\n`;
-      }
-      commentBody += `[View on ${registry}](${url})\n\n`;
+    quickInstall = '### 📥 Quick Install\n\n⚠️ No packages were published to any registry.\n';
+  }
+  
+  if (PR_COMMENT_TEMPLATE) {
+    // Use custom template with variable replacements
+    commentBody = PR_COMMENT_TEMPLATE
+      .replace(/{BUILD_FLOW}/g, BUILD_FLOW_TYPE)
+      .replace(/{PACKAGES_TABLE}/g, packagesTable)
+      .replace(/{QUICK_INSTALL}/g, quickInstall)
+      .replace(/{AUDIT_RESULTS}/g, auditSection);
+  } else {
+    // Generate default monorepo comment
+    commentBody = `## 📦 Package Build Flow — Monorepo Build\n\n`;
+    commentBody += `${flowInfo.emoji} **${flowInfo.title}** — ${flowInfo.description}\n\n`;
+    commentBody += packagesTable + '\n';
+    commentBody += quickInstall + '\n';
+    commentBody += auditSection;
+    commentBody += '\n---\n*This package was built automatically by the Package Build Flow action.*\n';
+  }
+  
+} else {
+  // Single package mode - existing behavior
+  const packageJson = JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8'));
+  const packageName = packageJson.name;
+  
+  console.log(`  Package: ${packageName}@${PACKAGE_VERSION}`);
+  
+  // Generate installation instructions
+  let installCommands = [];
+
+  if ((REGISTRY === 'npm' || REGISTRY === 'both') && NPM_PUBLISHED) {
+    installCommands.push({
+      registry: 'NPM Registry',
+      commands: [
+        `npm install ${packageName}@${PACKAGE_VERSION}`,
+        `npm install ${packageName}@${NPM_TAG}  # Use dist-tag`
+      ],
+      url: `${NPM_REGISTRY_URL}/${packageName}`
     });
   }
 
-  commentBody += auditSection;
+  if ((REGISTRY === 'github' || REGISTRY === 'both') && GITHUB_PUBLISHED) {
+    let ghPackageName = packageName;
+    let wasAutoScoped = false;
+    
+    if (!packageName.startsWith('@')) {
+      if (PACKAGE_SCOPE) {
+        // Ensure scope starts with @
+        const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+        ghPackageName = `${scope}/${packageName}`;
+      } else {
+        // Auto-scope using repository owner
+        const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
+        ghPackageName = `@${repoOwner}/${packageName}`;
+        wasAutoScoped = true;
+      }
+    }
+    
+    installCommands.push({
+      registry: 'GitHub Packages',
+      commands: [
+        `npm install ${ghPackageName}@${PACKAGE_VERSION}`,
+        `npm install ${ghPackageName}@${NPM_TAG}  # Use dist-tag`
+      ],
+      url: `https://github.com/${owner}/${repoName}/packages`,
+      note: wasAutoScoped ? `✨ Auto-scoped as \`${ghPackageName}\` (from repository owner)` : undefined
+    });
+  }
 
-  commentBody += `
----
-*This package was built automatically by the Package Build Flow action.*
-`;
+  if (PR_COMMENT_TEMPLATE) {
+    // Use custom template
+    commentBody = PR_COMMENT_TEMPLATE
+      .replace(/{BUILD_FLOW}/g, BUILD_FLOW_TYPE)
+      .replace(/{PACKAGE_VERSION}/g, PACKAGE_VERSION)
+      .replace(/{NPM_INSTALL}/g, installCommands.find(c => c.registry === 'NPM Registry')?.commands[0] || 'N/A')
+      .replace(/{GITHUB_INSTALL}/g, installCommands.find(c => c.registry === 'GitHub Packages')?.commands[0] || 'N/A')
+      .replace(/{AUDIT_RESULTS}/g, auditSection);
+  } else {
+    // Generate default comment
+    commentBody = `## ${flowInfo.emoji} ${flowInfo.title}\n\n`;
+    commentBody += `${flowInfo.description}\n\n`;
+    commentBody += `### 📦 Package Information\n\n`;
+    commentBody += `- **Package:** \`${packageName}\`\n`;
+    commentBody += `- **Version:** \`${PACKAGE_VERSION}\`\n`;
+    commentBody += `- **Dist-tag:** \`${NPM_TAG}\`\n\n`;
+    commentBody += `### 📥 Installation Instructions\n\n`;
+
+    if (installCommands.length === 0) {
+      commentBody += '⚠️  Package was not published to any registry.\n';
+    } else {
+      installCommands.forEach(({ registry, commands, url, note }) => {
+        commentBody += `#### ${registry}\n\n\`\`\`bash\n${commands.join('\n')}\n\`\`\`\n\n`;
+        if (note) {
+          commentBody += `${note}\n\n`;
+        }
+        commentBody += `[View on ${registry}](${url})\n\n`;
+      });
+    }
+
+    commentBody += auditSection;
+    commentBody += '\n---\n*This package was built automatically by the Package Build Flow action.*\n';
+  }
 }
 
 // Post comment to PR
