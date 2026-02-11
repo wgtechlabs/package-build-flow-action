@@ -74,7 +74,30 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     continue
   fi
   
-  PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
+  # Safely parse package name from package.json without aborting the orchestrator on failure
+  set +e
+  PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH" 2>/dev/null)
+  jq_status=$?
+  set -e
+  
+  if [ "$jq_status" -ne 0 ] || [ -z "$PACKAGE_NAME" ] || [ "$PACKAGE_NAME" = "null" ]; then
+    echo "❌ Error: Failed to read package name from '$PACKAGE_PATH' (invalid JSON or missing .name)"
+    PACKAGE_NAME="unknown"
+    PACKAGE_VERSION="unknown"
+    RESULT="failed"
+    ERROR_MESSAGE="Failed to read package name from package.json (invalid JSON or missing .name)"
+    FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
+    
+    # Add to results
+    BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
+      --arg version "$PACKAGE_VERSION" \
+      --arg result "$RESULT" \
+      --arg error "$ERROR_MESSAGE" \
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+    echo ""
+    continue
+  fi
+  
   echo "📋 Package name: $PACKAGE_NAME"
   
   # Set environment for this package
