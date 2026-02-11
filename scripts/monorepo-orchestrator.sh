@@ -112,27 +112,31 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     continue
   fi
   
-  # Step 2: Configure registries
+  # Step 2: Configure registries (skip if publish disabled or dry-run)
   echo ""
-  echo "⚙️  Step 2/4: Configuring registries..."
-  if bash "$ACTION_PATH/scripts/configure-registries.sh" > "$TEMP_OUTPUT" 2>&1; then
-    cat "$TEMP_OUTPUT"
-    echo "✅ Registry configuration completed"
+  if [ "$PUBLISH_ENABLED" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+    echo "⚙️  Step 2/4: Configuring registries..."
+    if bash "$ACTION_PATH/scripts/configure-registries.sh" > "$TEMP_OUTPUT" 2>&1; then
+      cat "$TEMP_OUTPUT"
+      echo "✅ Registry configuration completed"
+    else
+      cat "$TEMP_OUTPUT"
+      echo "❌ Registry configuration failed"
+      RESULT="error"
+      ERROR_MESSAGE="Registry configuration failed"
+      FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
+      
+      BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
+        --arg version "$PACKAGE_VERSION" \
+        --arg result "$RESULT" \
+        --arg error "$ERROR_MESSAGE" \
+        '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
+      rm -f "$TEMP_OUTPUT"
+      echo ""
+      continue
+    fi
   else
-    cat "$TEMP_OUTPUT"
-    echo "❌ Registry configuration failed"
-    RESULT="error"
-    ERROR_MESSAGE="Registry configuration failed"
-    FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
-    
-    BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
-      --arg version "$PACKAGE_VERSION" \
-      --arg result "$RESULT" \
-      --arg error "$ERROR_MESSAGE" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error}]')
-    rm -f "$TEMP_OUTPUT"
-    echo ""
-    continue
+    echo "⏭️  Step 2/4: Skipping registry configuration (publish disabled or dry-run mode)"
   fi
   
   # Step 3: Build and publish
