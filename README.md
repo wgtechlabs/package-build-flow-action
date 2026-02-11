@@ -202,9 +202,9 @@ Tag: patch
 |-------|-------------|---------|----------|
 | `monorepo` | Enable monorepo mode | `false` | No |
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
-| `workspace-detection` | Auto-detect workspaces from root package.json. Reads the `workspaces` field and discovers all non-private packages. | `true` | No |
+| `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
 
-*Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no workspaces field in root package.json)
+*Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
 ## Outputs
 

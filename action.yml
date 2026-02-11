@@ -172,11 +172,11 @@ outputs:
     value: ${{ steps.monorepo-orchestrator.outputs.build-results }}
   
   discovered-packages:
-    description: 'JSON array of discovered packages with name, version, path, and dir (only populated when workspace-detection is used)'
+    description: 'JSON array of discovered packages with name, version, path, and dir; when workspace-detection is not used this will be an empty array []'
     value: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
   
   package-count:
-    description: 'Number of discovered publishable packages (only populated when workspace-detection is used)'
+    description: 'Number of discovered publishable packages; when workspace-detection is not used this will be 0'
     value: ${{ steps.monorepo-orchestrator.outputs.package-count }}
 
 runs:
