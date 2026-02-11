@@ -11,6 +11,7 @@ Automated NPM package versioning, building, and publishing with intelligent flow
 
 - 🔄 **Intelligent Flow Detection**: Automatically determines build type based on GitHub context
 - 📦 **Dual Registry Support**: Publish to NPM Registry and/or GitHub Packages
+- 🏢 **Monorepo Support**: Process multiple packages independently with their own versions
 - ✨ **Auto-Scoping**: Automatically scopes packages for GitHub Packages using repository owner
 - 🏷️ **Smart Versioning**: SemVer versioning with pre-release tags
 - 🔒 **Security Scanning**: Built-in npm audit integration
@@ -195,20 +196,53 @@ Tag: patch
 | `dry-run` | Perform dry run without publishing | `false` | No |
 | `access` | Package access level for scoped packages: `public` or `restricted` | `public` | No |
 
+### Monorepo Configuration
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `monorepo` | Enable monorepo mode | `false` | No |
+| `package-paths` | Comma-separated list of package.json paths (monorepo mode only) | - | If `monorepo: 'true'` |
+
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `package-version` | Generated package version |
-| `registry-urls` | Installation commands for each registry |
-| `build-flow-type` | Detected flow type (pr, dev, patch, staging, wip) |
-| `short-sha` | Short commit SHA |
-| `npm-published` | Whether published to NPM (true/false) |
-| `github-published` | Whether published to GitHub Packages (true/false) |
-| `audit-completed` | Whether security audit completed |
-| `total-vulnerabilities` | Total vulnerabilities found |
-| `critical-vulnerabilities` | Critical vulnerabilities count |
-| `high-vulnerabilities` | High vulnerabilities count |
+| `package-version` | Generated package version (single-package mode) |
+| `registry-urls` | Installation commands for each registry (single-package mode) |
+| `build-flow-type` | Detected flow type (pr, dev, patch, staging, wip) (single-package mode) |
+| `short-sha` | Short commit SHA (single-package mode) |
+| `npm-published` | Whether published to NPM (true/false) (single-package mode) |
+| `github-published` | Whether published to GitHub Packages (true/false) (single-package mode) |
+| `audit-completed` | Whether security audit completed (single-package mode) |
+| `total-vulnerabilities` | Total vulnerabilities found (single-package mode) |
+| `critical-vulnerabilities` | Critical vulnerabilities count (single-package mode) |
+| `high-vulnerabilities` | High vulnerabilities count (single-package mode) |
+| `build-results` | JSON array of per-package build results (monorepo mode only) |
+
+### Monorepo Build Results Format
+
+When `monorepo: 'true'`, the `build-results` output contains a JSON array:
+
+```json
+[
+  {
+    "name": "@tinyclaw/core",
+    "version": "1.0.0-dev.abc1234",
+    "result": "success"
+  },
+  {
+    "name": "@tinyclaw/plugin-discord",
+    "version": "1.2.0-dev.abc1234",
+    "result": "success"
+  },
+  {
+    "name": "@tinyclaw/cli",
+    "version": "2.0.0-dev.abc1234",
+    "result": "failed",
+    "error": "Build failed"
+  }
+]
+```
 
 ## Configuration Guide
 
@@ -633,6 +667,77 @@ Test the action without publishing:
     npm-token: ${{ secrets.NPM_TOKEN }}
 ```
 
+### Monorepo Support
+
+Process multiple packages in a monorepo with independent versioning:
+
+```yaml
+name: Monorepo Build and Publish
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  build-monorepo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build and Publish Multiple Packages
+        id: build
+        uses: wgtechlabs/package-build-flow-action@v2
+        with:
+          # Enable monorepo mode
+          monorepo: 'true'
+          
+          # List all packages (comma-separated)
+          package-paths: 'core/package.json,plugins/plugin-discord/package.json,apps/cli/package.json'
+          
+          # Registry configuration
+          registry: 'both'
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Display Build Results
+        run: |
+          echo "Build Results:"
+          echo '${{ steps.build.outputs.build-results }}' | jq '.'
+```
+
+**Key Features:**
+- Each package gets its own version based on its `package.json`
+- Packages are processed sequentially
+- If one package fails, remaining packages still attempt to build/publish
+- Returns JSON array with per-package results
+- Works with `dry-run` and `publish-enabled: false`
+
+**Example Output:**
+```json
+[
+  {
+    "name": "@tinyclaw/core",
+    "version": "1.0.0-dev.abc1234",
+    "result": "success"
+  },
+  {
+    "name": "@tinyclaw/plugin-discord",
+    "version": "1.2.0-dev.abc1234",
+    "result": "success"
+  }
+]
+```
+
 ## Troubleshooting
 
 ### Package Not Published
@@ -700,6 +805,7 @@ See the [examples](./examples) directory for complete workflow examples:
 - [basic-workflow.yml](./examples/basic-workflow.yml) - Simple workflow example
 - [advanced-workflow.yml](./examples/advanced-workflow.yml) - Full-featured workflow
 - [release-workflow.yml](./examples/release-workflow.yml) - Production release workflow
+- [monorepo-workflow.yml](./examples/monorepo-workflow.yml) - Monorepo multi-package workflow
 
 ## Contributing
 

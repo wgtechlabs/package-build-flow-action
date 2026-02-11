@@ -105,6 +105,17 @@ inputs:
     description: 'Package access level for scoped packages: public or restricted'
     required: false
     default: 'public'
+  
+  # Monorepo Configuration
+  monorepo:
+    description: 'Enable monorepo mode'
+    required: false
+    default: 'false'
+  
+  package-paths:
+    description: 'Comma-separated list of package.json paths (monorepo mode)'
+    required: false
+    default: ''
 
 outputs:
   # Version Outputs
@@ -149,12 +160,49 @@ outputs:
   high-vulnerabilities:
     description: 'High vulnerabilities count'
     value: ${{ steps.audit.outputs.high-vulnerabilities }}
+  
+  # Monorepo Outputs
+  build-results:
+    description: 'JSON array of per-package build results (only populated in monorepo mode when monorepo: true)'
+    value: ${{ steps.monorepo-orchestrator.outputs.build-results }}
 
 runs:
   using: 'composite'
   steps:
+    # Monorepo Mode
+    - name: Monorepo Orchestrator
+      id: monorepo-orchestrator
+      if: inputs.monorepo == 'true'
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/monorepo-orchestrator.sh
+      env:
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        MAIN_BRANCH: ${{ inputs.main-branch }}
+        DEV_BRANCH: ${{ inputs.dev-branch }}
+        PACKAGE_PATHS: ${{ inputs.package-paths }}
+        BUILD_SCRIPT: ${{ inputs.build-script }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        VERSION_PREFIX: ${{ inputs.version-prefix }}
+        REGISTRY: ${{ inputs.registry }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        ACCESS: ${{ inputs.access }}
+        AUDIT_ENABLED: ${{ inputs.audit-enabled }}
+        AUDIT_LEVEL: ${{ inputs.audit-level }}
+        FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
+        ACTION_PATH: ${{ github.action_path }}
+    
+    # Single Package Mode
     - name: Detect Build Flow
       id: detect-flow
+      if: inputs.monorepo != 'true'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/detect-package-flow.sh
@@ -167,6 +215,7 @@ runs:
     
     - name: Configure Registries
       id: configure-registries
+      if: inputs.monorepo != 'true'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/configure-registries.sh
@@ -182,6 +231,7 @@ runs:
     
     - name: Build and Publish Package
       id: publish
+      if: inputs.monorepo != 'true'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/build-and-publish.sh
@@ -202,7 +252,7 @@ runs:
     
     - name: Run Security Audit
       id: audit
-      if: inputs.audit-enabled == 'true'
+      if: inputs.monorepo != 'true' && inputs.audit-enabled == 'true'
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/audit-package.js
@@ -213,6 +263,7 @@ runs:
     
     - name: Generate Outputs
       id: generate-outputs
+      if: inputs.monorepo != 'true'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/generate-outputs.sh
@@ -228,7 +279,7 @@ runs:
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Post PR Comment
-      if: inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
+      if: inputs.monorepo != 'true' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/pr-comment.js
