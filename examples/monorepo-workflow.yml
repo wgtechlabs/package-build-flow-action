@@ -60,7 +60,7 @@ jobs:
           fail-on-audit: 'false'
       
       - name: Display Discovered Packages (if workspace-detection used)
-        if: inputs.workspace-detection == 'true' && !inputs.package-paths
+        if: steps.build.outputs.package-count != '0' && steps.build.outputs.package-count != ''
         run: |
           echo "Discovered ${{ steps.build.outputs.package-count }} packages:"
           echo '${{ steps.build.outputs.discovered-packages }}' | jq '.'

@@ -49,23 +49,32 @@ elif [ "$WORKSPACE_DETECTION" = "true" ]; then
   
   # Run workspace discovery script
   DISCOVERY_OUTPUT=$(mktemp)
+  DISCOVERY_OUTPUTS=$(mktemp)
+  
+  # Save current GITHUB_OUTPUT location
+  ORIGINAL_OUTPUT="$GITHUB_OUTPUT"
+  # Use temporary file for discovery outputs
+  export GITHUB_OUTPUT="$DISCOVERY_OUTPUTS"
   
   if bash "$ACTION_PATH/scripts/discover-workspaces.sh" > "$DISCOVERY_OUTPUT" 2>&1; then
     cat "$DISCOVERY_OUTPUT"
     
-    # Extract discovered package paths
-    if [ -f "$GITHUB_OUTPUT" ]; then
-      DISCOVERED_PACKAGES=$(grep "^discovered-packages=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
-      PKG_COUNT=$(grep "^package-count=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+    # Read outputs from temporary file
+    if [ -f "$DISCOVERY_OUTPUTS" ]; then
+      DISCOVERED_PACKAGES=$(grep "^discovered-packages=" "$DISCOVERY_OUTPUTS" | tail -1 | cut -d= -f2-)
+      PKG_COUNT=$(grep "^package-count=" "$DISCOVERY_OUTPUTS" | tail -1 | cut -d= -f2-)
       
-      # Note: discovered-packages and package-count outputs are already set by discover-workspaces.sh
+      # Copy discovery outputs to the original GITHUB_OUTPUT
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+      echo "discovered-packages=$DISCOVERED_PACKAGES" >> "$GITHUB_OUTPUT"
+      echo "package-count=$PKG_COUNT" >> "$GITHUB_OUTPUT"
       
-      # Extract comma-separated package paths from the discovered packages JSON
-      PACKAGE_PATHS=$(echo "$DISCOVERED_PACKAGES" | jq -r '.[].path' | tr '\n' ',' | sed 's/,$//')
+      # Extract comma-separated package paths from the discovered packages JSON (simplified)
+      PACKAGE_PATHS=$(echo "$DISCOVERED_PACKAGES" | jq -r '[.[].path] | join(",")')
       
-      if [ -z "$PACKAGE_PATHS" ]; then
+      if [ -z "$PACKAGE_PATHS" ] || [ "$PACKAGE_PATHS" = "null" ]; then
         echo "❌ Error: No packages discovered from workspace configuration"
-        rm -f "$DISCOVERY_OUTPUT"
+        rm -f "$DISCOVERY_OUTPUT" "$DISCOVERY_OUTPUTS"
         exit 1
       fi
       
@@ -73,15 +82,17 @@ elif [ "$WORKSPACE_DETECTION" = "true" ]; then
       IFS=',' read -ra PACKAGE_ARRAY <<< "$PACKAGE_PATHS"
       TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
     else
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
       echo "❌ Error: Failed to read discovery results"
-      rm -f "$DISCOVERY_OUTPUT"
+      rm -f "$DISCOVERY_OUTPUT" "$DISCOVERY_OUTPUTS"
       exit 1
     fi
     
-    rm -f "$DISCOVERY_OUTPUT"
+    rm -f "$DISCOVERY_OUTPUT" "$DISCOVERY_OUTPUTS"
   else
     cat "$DISCOVERY_OUTPUT"
-    rm -f "$DISCOVERY_OUTPUT"
+    rm -f "$DISCOVERY_OUTPUT" "$DISCOVERY_OUTPUTS"
+    export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
     echo "❌ Error: Workspace discovery failed"
     exit 1
   fi

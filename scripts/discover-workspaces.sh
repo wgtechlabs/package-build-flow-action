@@ -105,45 +105,57 @@ while IFS= read -r pattern; do
     # Find directories matching the pattern
     if [ -d "$BASE_DIR" ]; then
       # Use shell globbing by temporarily disabling nomatch error
+      # This is safe because we check if directories exist before processing
       shopt -s nullglob 2>/dev/null || true
       
+      # Temporarily disable 'set -e' for glob expansion
+      set +e
+      # Store matching directories in an array
+      MATCHING_DIRS=()
       for dir in $pattern; do
         if [ -d "$dir" ]; then
-          PKG_PATH="$dir/package.json"
-          if [ -f "$PKG_PATH" ]; then
-            # Check if package is private
-            IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
-            
-            if [ "$IS_PRIVATE" = "true" ]; then
-              echo "    ⏭️  Skipping $PKG_PATH (private: true)"
-              SKIPPED_PRIVATE=$((SKIPPED_PRIVATE + 1))
-              continue
-            fi
-            
-            # Extract package metadata
-            PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
-            PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
-            
-            # Normalize path (remove leading ./)
-            PKG_PATH_NORMALIZED="${PKG_PATH#./}"
-            PKG_DIR="${dir#./}"
-            
-            echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
-            
-            # Add to discovered packages
-            DISCOVERED_PACKAGES=$(echo "$DISCOVERED_PACKAGES" | jq \
-              --arg name "$PKG_NAME" \
-              --arg version "$PKG_VERSION" \
-              --arg path "$PKG_PATH_NORMALIZED" \
-              --arg dir "$PKG_DIR" \
-              '. += [{"name": $name, "version": $version, "path": $path, "dir": $dir}]')
-            
-            TOTAL_FOUND=$((TOTAL_FOUND + 1))
-          fi
+          MATCHING_DIRS+=("$dir")
         fi
       done
+      set -e
       
+      # Re-enable nomatch behavior
       shopt -u nullglob 2>/dev/null || true
+      
+      # Process matching directories
+      for dir in "${MATCHING_DIRS[@]}"; do
+        PKG_PATH="$dir/package.json"
+        if [ -f "$PKG_PATH" ]; then
+          # Check if package is private
+          IS_PRIVATE=$(jq -r '.private // false' "$PKG_PATH" 2>/dev/null)
+          
+          if [ "$IS_PRIVATE" = "true" ]; then
+            echo "    ⏭️  Skipping $PKG_PATH (private: true)"
+            SKIPPED_PRIVATE=$((SKIPPED_PRIVATE + 1))
+            continue
+          fi
+          
+          # Extract package metadata
+          PKG_NAME=$(jq -r '.name // "unknown"' "$PKG_PATH" 2>/dev/null)
+          PKG_VERSION=$(jq -r '.version // "0.0.0"' "$PKG_PATH" 2>/dev/null)
+          
+          # Normalize path (remove leading ./)
+          PKG_PATH_NORMALIZED="${PKG_PATH#./}"
+          PKG_DIR="${dir#./}"
+          
+          echo "    ✅ Found: $PKG_NAME ($PKG_PATH_NORMALIZED)"
+          
+          # Add to discovered packages
+          DISCOVERED_PACKAGES=$(echo "$DISCOVERED_PACKAGES" | jq \
+            --arg name "$PKG_NAME" \
+            --arg version "$PKG_VERSION" \
+            --arg path "$PKG_PATH_NORMALIZED" \
+            --arg dir "$PKG_DIR" \
+            '. += [{"name": $name, "version": $version, "path": $path, "dir": $dir}]')
+          
+          TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        fi
+      done
     fi
   else
     # Direct path - check if it's a directory
@@ -210,10 +222,5 @@ echo ""
 # Set outputs
 echo "discovered-packages=$(echo "$DISCOVERED_PACKAGES" | jq -c '.')" >> "$GITHUB_OUTPUT"
 echo "package-count=$TOTAL_FOUND" >> "$GITHUB_OUTPUT"
-
-# Export for use in monorepo orchestrator
-# Convert to comma-separated package paths
-PACKAGE_PATHS=$(echo "$DISCOVERED_PACKAGES" | jq -r '.[].path' | tr '\n' ',' | sed 's/,$//')
-echo "DISCOVERED_PACKAGE_PATHS=$PACKAGE_PATHS"
 
 echo "✅ Workspace discovery completed"
