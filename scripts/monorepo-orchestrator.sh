@@ -171,6 +171,7 @@ if [ "$CHANGED_ONLY" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ]; then
         # Validate CHANGED_PACKAGES_JSON is valid JSON
         if ! echo "$CHANGED_PACKAGES_JSON" | jq -e . >/dev/null 2>&1; then
           echo "⚠️  Warning: Invalid JSON in changed packages output"
+          echo "    First 100 chars: ${CHANGED_PACKAGES_JSON:0:100}"
           echo "🔄 Falling back to processing all packages"
           echo ""
         else

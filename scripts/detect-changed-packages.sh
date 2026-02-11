@@ -58,7 +58,10 @@ case "$EVENT_NAME" in
     # Find the most recent tag before the current one
     CURRENT_TAG=$(echo "$GITHUB_CONTEXT" | jq -r '.event.release.tag_name // ""')
     
-    if [ -n "$CURRENT_TAG" ]; then
+    if [ -z "$CURRENT_TAG" ]; then
+      echo "⚠️  No release tag found in event context"
+      SHALLOW_CLONE=true
+    else
       echo "🚀 Release detected: $CURRENT_TAG"
       
       # Get all tags sorted by version
@@ -73,9 +76,6 @@ case "$EVENT_NAME" in
         echo "⚠️  No previous tag found"
         SHALLOW_CLONE=true
       fi
-    else
-      echo "⚠️  No release tag found"
-      SHALLOW_CLONE=true
     fi
     ;;
   
@@ -231,7 +231,9 @@ for ((i=0; i<PACKAGE_COUNT; i++)); do
   PACKAGE_CHANGED=false
   
   while IFS= read -r changed_file; do
-    # Check if the changed file path starts with the package directory
+    # Check if the changed file path starts with the package directory OR
+    # if the changed file is the package.json itself
+    # PKG_DIR is like "packages/pkg1" and PKG_PATH is like "packages/pkg1/package.json"
     if [[ "$changed_file" == "$PKG_DIR/"* ]] || [[ "$changed_file" == "$PKG_PATH" ]]; then
       PACKAGE_CHANGED=true
       break
