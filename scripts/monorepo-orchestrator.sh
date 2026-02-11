@@ -8,39 +8,99 @@ echo "🎯 Monorepo mode enabled"
 echo "===================="
 echo ""
 
-# Check if package-paths is provided
-if [ -z "$PACKAGE_PATHS" ]; then
-  echo "❌ Error: package-paths input is required in monorepo mode"
+# Priority logic for determining package list:
+# 1. If package-paths is explicitly provided → use it
+# 2. Else if workspace-detection is enabled → auto-discover from root package.json
+# 3. Else → error
+
+if [ -n "$PACKAGE_PATHS" ]; then
+  echo "📋 Using explicitly provided package-paths"
+  echo ""
+  
+  # Parse comma-separated package paths into an array
+  IFS=',' read -ra PACKAGE_ARRAY <<< "$PACKAGE_PATHS"
+  
+  # Filter out empty entries after trimming
+  FILTERED_PACKAGES=()
+  for pkg in "${PACKAGE_ARRAY[@]}"; do
+    # Trim whitespace
+    pkg=$(echo "$pkg" | xargs)
+    # Only add non-empty paths
+    if [ -n "$pkg" ]; then
+      FILTERED_PACKAGES+=("$pkg")
+    fi
+  done
+  PACKAGE_ARRAY=("${FILTERED_PACKAGES[@]}")
+  
+  TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+  
+  if [ "$TOTAL_PACKAGES" -eq 0 ]; then
+    echo "❌ Error: No valid package paths provided after filtering"
+    exit 1
+  fi
+  
+  # Set empty outputs for discovery (not used when package-paths is explicit)
+  echo "discovered-packages=[]" >> "$GITHUB_OUTPUT"
+  echo "package-count=0" >> "$GITHUB_OUTPUT"
+  
+elif [ "$WORKSPACE_DETECTION" = "true" ]; then
+  echo "🔍 Auto-discovering packages from workspace configuration"
+  echo ""
+  
+  # Run workspace discovery script
+  DISCOVERY_OUTPUT=$(mktemp)
+  
+  if bash "$ACTION_PATH/scripts/discover-workspaces.sh" > "$DISCOVERY_OUTPUT" 2>&1; then
+    cat "$DISCOVERY_OUTPUT"
+    
+    # Extract discovered package paths
+    if [ -f "$GITHUB_OUTPUT" ]; then
+      DISCOVERED_PACKAGES=$(grep "^discovered-packages=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+      PKG_COUNT=$(grep "^package-count=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+      
+      # Note: discovered-packages and package-count outputs are already set by discover-workspaces.sh
+      
+      # Extract comma-separated package paths from the discovered packages JSON
+      PACKAGE_PATHS=$(echo "$DISCOVERED_PACKAGES" | jq -r '.[].path' | tr '\n' ',' | sed 's/,$//')
+      
+      if [ -z "$PACKAGE_PATHS" ]; then
+        echo "❌ Error: No packages discovered from workspace configuration"
+        rm -f "$DISCOVERY_OUTPUT"
+        exit 1
+      fi
+      
+      # Parse into array for processing
+      IFS=',' read -ra PACKAGE_ARRAY <<< "$PACKAGE_PATHS"
+      TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+    else
+      echo "❌ Error: Failed to read discovery results"
+      rm -f "$DISCOVERY_OUTPUT"
+      exit 1
+    fi
+    
+    rm -f "$DISCOVERY_OUTPUT"
+  else
+    cat "$DISCOVERY_OUTPUT"
+    rm -f "$DISCOVERY_OUTPUT"
+    echo "❌ Error: Workspace discovery failed"
+    exit 1
+  fi
+  
+else
+  echo "❌ Error: No packages to process"
+  echo ""
+  echo "Please either:"
+  echo "  1. Provide package-paths input with comma-separated package.json paths"
+  echo "  2. Enable workspace-detection (default: true) with workspaces field in root package.json"
   exit 1
 fi
-
-# Parse comma-separated package paths into an array
-IFS=',' read -ra PACKAGE_ARRAY <<< "$PACKAGE_PATHS"
-
-# Filter out empty entries after trimming
-FILTERED_PACKAGES=()
-for pkg in "${PACKAGE_ARRAY[@]}"; do
-  # Trim whitespace
-  pkg=$(echo "$pkg" | xargs)
-  # Only add non-empty paths
-  if [ -n "$pkg" ]; then
-    FILTERED_PACKAGES+=("$pkg")
-  fi
-done
-PACKAGE_ARRAY=("${FILTERED_PACKAGES[@]}")
 
 # Initialize results array
 BUILD_RESULTS="[]"
 
 # Track success/failure
-TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
 SUCCESSFUL_PACKAGES=0
 FAILED_PACKAGES=0
-
-if [ "$TOTAL_PACKAGES" -eq 0 ]; then
-  echo "❌ Error: No valid package paths provided after filtering"
-  exit 1
-fi
 
 echo "📦 Found $TOTAL_PACKAGES package(s) to process"
 echo ""
