@@ -78,6 +78,9 @@ const flowDescriptions = {
 const flowInfo = flowDescriptions[BUILD_FLOW_TYPE] || flowDescriptions.wip;
 
 // Load audit results if available
+// Note: In monorepo mode, audit-summary.json is written per-package.
+// For now, we only show root-level audit results. Per-package audit aggregation
+// would require collecting audit-summary.json files from each package directory.
 let auditSection = '';
 if (AUDIT_ENABLED) {
   try {
@@ -120,9 +123,43 @@ if (MONOREPO_MODE) {
   // Monorepo mode
   console.log('  Generating monorepo comment...');
   
-  const buildResults = JSON.parse(BUILD_RESULTS_JSON);
-  const discoveredPackages = JSON.parse(DISCOVERED_PACKAGES_JSON);
-  const changedPackages = JSON.parse(CHANGED_PACKAGES_JSON);
+  // Parse JSON with error handling
+  let buildResults = [];
+  let discoveredPackages = [];
+  let changedPackages = [];
+  
+  try {
+    buildResults = JSON.parse(BUILD_RESULTS_JSON);
+    if (!Array.isArray(buildResults)) {
+      console.warn('⚠️  BUILD_RESULTS_JSON is not an array, using empty array');
+      buildResults = [];
+    }
+  } catch (error) {
+    console.error('❌ Failed to parse BUILD_RESULTS_JSON:', error.message);
+    buildResults = [];
+  }
+  
+  try {
+    discoveredPackages = JSON.parse(DISCOVERED_PACKAGES_JSON);
+    if (!Array.isArray(discoveredPackages)) {
+      console.warn('⚠️  DISCOVERED_PACKAGES_JSON is not an array, using empty array');
+      discoveredPackages = [];
+    }
+  } catch (error) {
+    console.error('❌ Failed to parse DISCOVERED_PACKAGES_JSON:', error.message);
+    discoveredPackages = [];
+  }
+  
+  try {
+    changedPackages = JSON.parse(CHANGED_PACKAGES_JSON);
+    if (!Array.isArray(changedPackages)) {
+      console.warn('⚠️  CHANGED_PACKAGES_JSON is not an array, using empty array');
+      changedPackages = [];
+    }
+  } catch (error) {
+    console.error('❌ Failed to parse CHANGED_PACKAGES_JSON:', error.message);
+    changedPackages = [];
+  }
   
   console.log(`  Build results: ${buildResults.length} packages`);
   console.log(`  Discovered packages: ${discoveredPackages.length} packages`);
@@ -142,11 +179,41 @@ if (MONOREPO_MODE) {
     const buildResult = buildResultsMap[pkg.name];
     
     if (buildResult && buildResult.result === 'success') {
-      // Successfully published
-      const version = `\`${buildResult.version}\``;
-      const status = '✅ Published';
-      const installCmd = `\`npm i ${pkg.name}@${buildResult.version}\``;
-      packagesTable += `| ${pkg.name} | ${version} | ${status} | ${installCmd} |\n`;
+      // Check if actually published to at least one registry
+      const npmPublished = buildResult['npm-published'] === 'true';
+      const githubPublished = buildResult['github-published'] === 'true';
+      const wasPublished = npmPublished || githubPublished;
+      
+      if (wasPublished) {
+        // Successfully published
+        const version = `\`${buildResult.version}\``;
+        const status = '✅ Published';
+        
+        // Determine package name for install command
+        // Prefer npm name, but use GitHub-scoped name if only published to GitHub
+        let installName = pkg.name;
+        if (!npmPublished && githubPublished) {
+          // Only published to GitHub - need to determine scoped name
+          if (!pkg.name.startsWith('@')) {
+            // Package needs scoping for GitHub
+            const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
+            if (PACKAGE_SCOPE) {
+              const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+              installName = `${scope}/${pkg.name}`;
+            } else {
+              installName = `@${repoOwner}/${pkg.name}`;
+            }
+          }
+        }
+        
+        const installCmd = `\`npm i ${installName}@${buildResult.version}\``;
+        packagesTable += `| ${pkg.name} | ${version} | ${status} | ${installCmd} |\n`;
+      } else {
+        // Build succeeded but not published (dry-run or publish disabled)
+        const version = `\`${buildResult.version}\``;
+        const status = '⚠️ Built (not published)';
+        packagesTable += `| ${pkg.name} | ${version} | ${status} | — |\n`;
+      }
     } else if (buildResult && buildResult.result === 'failed') {
       // Failed
       const status = '❌ Failed';
@@ -159,12 +226,36 @@ if (MONOREPO_MODE) {
   });
   
   // Build quick install section
-  // Note: buildResults only contains changed packages, so successfulPackages = successfully published changed packages
-  const successfulPackages = buildResults.filter(r => r.result === 'success');
+  // Filter to packages that were actually published to at least one registry
+  const successfulPackages = buildResults.filter(r => 
+    r.result === 'success' && 
+    (r['npm-published'] === 'true' || r['github-published'] === 'true')
+  );
   let quickInstall = '';
   
   if (successfulPackages.length > 0) {
-    const installCommands = successfulPackages.map(pkg => `${pkg.name}@${pkg.version}`).join(' ');
+    const installCommands = successfulPackages
+      .map(pkg => {
+        const npmPublished = pkg['npm-published'] === 'true';
+        const githubPublished = pkg['github-published'] === 'true';
+        
+        // Determine package name for install command
+        let installName = pkg.name;
+        
+        // If only published to GitHub and package is unscoped, use GitHub-scoped name
+        if (!npmPublished && githubPublished && !pkg.name.startsWith('@')) {
+          const repoOwner = GITHUB_CONTEXT.repository_owner || owner;
+          if (PACKAGE_SCOPE) {
+            const scope = PACKAGE_SCOPE.startsWith('@') ? PACKAGE_SCOPE : `@${PACKAGE_SCOPE}`;
+            installName = `${scope}/${pkg.name}`;
+          } else {
+            installName = `@${repoOwner}/${pkg.name}`;
+          }
+        }
+        
+        return `${installName}@${pkg.version}`;
+      })
+      .join(' ');
     quickInstall = `### 📥 Quick Install (changed packages)\n\`\`\`bash\nnpm i ${installCommands}\n\`\`\`\n`;
   } else {
     quickInstall = '### 📥 Quick Install\n\n⚠️ No packages were published to any registry.\n';
