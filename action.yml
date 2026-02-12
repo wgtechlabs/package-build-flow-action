@@ -196,6 +196,22 @@ outputs:
   changed-count:
     description: 'Number of changed packages'
     value: ${{ steps.monorepo-orchestrator.outputs.changed-count }}
+  
+  packages-published:
+    description: 'Comma-separated list of successfully published package names (monorepo mode)'
+    value: ${{ steps.monorepo-generate-outputs.outputs.packages-published }}
+  
+  packages-failed:
+    description: 'Comma-separated list of failed package names (monorepo mode)'
+    value: ${{ steps.monorepo-generate-outputs.outputs.packages-failed }}
+  
+  total-packages:
+    description: 'Total number of packages processed (monorepo mode)'
+    value: ${{ steps.monorepo-generate-outputs.outputs.total-packages }}
+  
+  changed-packages-count:
+    description: 'Number of packages with changes (monorepo mode)'
+    value: ${{ steps.monorepo-generate-outputs.outputs.changed-packages-count }}
 
 runs:
   using: 'composite'
@@ -233,6 +249,38 @@ runs:
         AUDIT_LEVEL: ${{ inputs.audit-level }}
         FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
         ACTION_PATH: ${{ github.action_path }}
+    
+    - name: Generate Monorepo Outputs
+      id: monorepo-generate-outputs
+      if: inputs.monorepo == 'true'
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/generate-outputs.sh
+      env:
+        MONOREPO_MODE: 'true'
+        BUILD_RESULTS_JSON: ${{ steps.monorepo-orchestrator.outputs.build-results }}
+        DISCOVERED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
+        CHANGED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.changed-packages }}
+        CHANGED_COUNT: ${{ steps.monorepo-orchestrator.outputs.changed-count }}
+    
+    - name: Post Monorepo PR Comment
+      if: inputs.monorepo == 'true' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        node ${{ github.action_path }}/scripts/pr-comment.js
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        BUILD_FLOW_TYPE: 'pr'
+        MONOREPO_MODE: 'true'
+        BUILD_RESULTS_JSON: ${{ steps.monorepo-orchestrator.outputs.build-results }}
+        DISCOVERED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
+        REGISTRY: ${{ inputs.registry }}
+        NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+        PACKAGE_SCOPE: ${{ inputs.package-scope }}
+        AUDIT_ENABLED: ${{ inputs.audit-enabled }}
+        PR_COMMENT_TEMPLATE: ${{ inputs.pr-comment-template }}
     
     # Single Package Mode
     - name: Detect Build Flow
