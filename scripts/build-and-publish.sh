@@ -84,7 +84,10 @@ fi
 
 # Resolve package manager based on input or auto-detection
 if [ "$PACKAGE_MANAGER" = "auto" ]; then
+  # Check for Bun lockfiles - bun.lockb (legacy) takes precedence for backward compatibility
   if [ -f "bun.lockb" ]; then
+    PKG_MANAGER="bun"
+  elif [ -f "bun.lock" ]; then
     PKG_MANAGER="bun"
   elif [ -f "pnpm-lock.yaml" ]; then
     PKG_MANAGER="pnpm"

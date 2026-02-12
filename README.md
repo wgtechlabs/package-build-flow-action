@@ -263,13 +263,14 @@ The action supports multiple package managers with automatic detection:
 
 When `package-manager: 'auto'` (default), the action automatically selects the package manager based on lockfile presence:
 
-1. If `bun.lockb` exists → Uses **Bun**
-2. If `pnpm-lock.yaml` exists → Uses **pnpm**
-3. If `yarn.lock` exists → Uses **Yarn**
-4. If `package-lock.json` exists → Uses **npm**
-5. Neither → Falls back to **npm**
+1. If `bun.lockb` exists → Uses **Bun** (legacy binary format, Bun < v1.2)
+2. If `bun.lock` exists → Uses **Bun** (text-based format, Bun v1.2+)
+3. If `pnpm-lock.yaml` exists → Uses **pnpm**
+4. If `yarn.lock` exists → Uses **Yarn**
+5. If `package-lock.json` exists → Uses **npm**
+6. Neither → Falls back to **npm**
 
-This ensures lockfile consistency and preserves backward compatibility.
+This ensures lockfile consistency and preserves backward compatibility. The action checks for `bun.lockb` first to support legacy Bun projects, then checks for `bun.lock` for modern Bun v1.2+ projects. **Note:** If both `bun.lockb` and `bun.lock` exist in a project, `bun.lockb` takes precedence to ensure consistent behavior for projects in transition.
 
 #### Manual Selection
 
@@ -302,7 +303,7 @@ steps:
 
   - uses: wgtechlabs/package-build-flow-action@v1
     with:
-      package-manager: 'bun'  # or 'auto' to detect from bun.lockb
+      package-manager: 'bun'  # or 'auto' to detect from bun.lockb or bun.lock
       npm-token: ${{ secrets.NPM_TOKEN }}
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
