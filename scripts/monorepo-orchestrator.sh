@@ -383,6 +383,8 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   
   # Create a temporary output file for this package's steps
   TEMP_OUTPUT=$(mktemp)
+  # Create a per-package GITHUB_OUTPUT temp file to isolate outputs
+  PACKAGE_OUTPUT=$(mktemp)
   
   # Step 1: Detect flow
   echo "🔍 Detecting build flow..."
@@ -473,18 +475,22 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   export PACKAGE_VERSION
   export NPM_TAG
   
+  # Save original GITHUB_OUTPUT and use per-package temp file
+  ORIGINAL_GITHUB_OUTPUT="$GITHUB_OUTPUT"
+  export GITHUB_OUTPUT="$PACKAGE_OUTPUT"
+  
   if bash "$ACTION_PATH/scripts/build-and-publish.sh" > "$TEMP_OUTPUT" 2>&1; then
     cat "$TEMP_OUTPUT"
     echo "✅ Build and publish completed"
     RESULT="success"
     SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
     
-    # Extract publish status from GITHUB_OUTPUT
+    # Extract publish status from per-package output file
     NPM_PUBLISHED="false"
     GITHUB_PUBLISHED="false"
-    if [ -f "$GITHUB_OUTPUT" ]; then
-      NPM_PUBLISHED=$(grep "^npm-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
-      GITHUB_PUBLISHED=$(grep "^github-published=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+    if [ -f "$PACKAGE_OUTPUT" ]; then
+      NPM_PUBLISHED=$(grep "^npm-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2-)
+      GITHUB_PUBLISHED=$(grep "^github-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2-)
       # Default to false if grep found nothing
       [ -z "$NPM_PUBLISHED" ] && NPM_PUBLISHED="false"
       [ -z "$GITHUB_PUBLISHED" ] && GITHUB_PUBLISHED="false"
@@ -498,6 +504,9 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     NPM_PUBLISHED="false"
     GITHUB_PUBLISHED="false"
   fi
+  
+  # Restore original GITHUB_OUTPUT
+  export GITHUB_OUTPUT="$ORIGINAL_GITHUB_OUTPUT"
   
   # Step 4: Run audit if enabled
   echo ""
@@ -544,7 +553,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": $npm_published, "github-published": $github_published}]')
   fi
   
-  rm -f "$TEMP_OUTPUT"
+  rm -f "$TEMP_OUTPUT" "$PACKAGE_OUTPUT"
   echo ""
 done
 

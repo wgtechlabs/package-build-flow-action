@@ -26,7 +26,16 @@ if [ "$MONOREPO_MODE" = "true" ]; then
   PACKAGES_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select((.["npm-published"] == "true") or (.["github-published"] == "true")) | .name] | join(",")')
   PACKAGES_FAILED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.result == "failed") | .name] | join(",")')
   TOTAL_PACKAGES=$(echo "$BUILD_RESULTS_JSON" | jq '. | length')
-  CHANGED_PACKAGES_COUNT=$(echo "$CHANGED_PACKAGES_JSON" | jq '. | length')
+  
+  # Determine changed packages count:
+  # - If CHANGED_COUNT is -1, upstream signaled "all packages changed"
+  #   so use TOTAL_PACKAGES.
+  # - Otherwise, fall back to the length of CHANGED_PACKAGES_JSON.
+  if [ "${CHANGED_COUNT:-}" = "-1" ]; then
+    CHANGED_PACKAGES_COUNT="$TOTAL_PACKAGES"
+  else
+    CHANGED_PACKAGES_COUNT=$(echo "$CHANGED_PACKAGES_JSON" | jq '. | length')
+  fi
   
   echo "  Total packages: $TOTAL_PACKAGES"
   echo "  Changed packages: $CHANGED_PACKAGES_COUNT"

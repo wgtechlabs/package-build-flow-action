@@ -261,6 +261,7 @@ runs:
         BUILD_RESULTS_JSON: ${{ steps.monorepo-orchestrator.outputs.build-results }}
         DISCOVERED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
         CHANGED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.changed-packages }}
+        CHANGED_COUNT: ${{ steps.monorepo-orchestrator.outputs.changed-count }}
     
     - name: Post Monorepo PR Comment
       if: inputs.monorepo == 'true' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'

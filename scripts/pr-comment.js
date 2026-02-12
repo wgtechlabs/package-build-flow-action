@@ -141,7 +141,6 @@ if (MONOREPO_MODE) {
   // Parse JSON with error handling
   let buildResults = [];
   let discoveredPackages = [];
-  let changedPackages = [];
   
   try {
     buildResults = JSON.parse(BUILD_RESULTS_JSON);
@@ -165,20 +164,8 @@ if (MONOREPO_MODE) {
     discoveredPackages = [];
   }
   
-  try {
-    changedPackages = JSON.parse(CHANGED_PACKAGES_JSON);
-    if (!Array.isArray(changedPackages)) {
-      console.warn('⚠️  CHANGED_PACKAGES_JSON is not an array, using empty array');
-      changedPackages = [];
-    }
-  } catch (error) {
-    console.error('❌ Failed to parse CHANGED_PACKAGES_JSON:', error.message);
-    changedPackages = [];
-  }
-  
   console.log(`  Build results: ${buildResults.length} packages`);
   console.log(`  Discovered packages: ${discoveredPackages.length} packages`);
-  console.log(`  Changed packages: ${changedPackages.length} packages`);
   
   // Create a map of build results by package name
   const buildResultsMap = {};
@@ -262,7 +249,11 @@ if (MONOREPO_MODE) {
       .replace(/{BUILD_FLOW}/g, BUILD_FLOW_TYPE)
       .replace(/{PACKAGES_TABLE}/g, packagesTable)
       .replace(/{QUICK_INSTALL}/g, quickInstall)
-      .replace(/{AUDIT_RESULTS}/g, auditSection);
+      .replace(/{AUDIT_RESULTS}/g, auditSection)
+      // Monorepo-safe fallbacks for single-package placeholders
+      .replace(/{PACKAGE_VERSION}/g, 'multiple')
+      .replace(/{NPM_INSTALL}/g, 'See Quick Install section below')
+      .replace(/{GITHUB_INSTALL}/g, 'See Quick Install section below');
   } else {
     // Generate default monorepo comment
     commentBody = `## 📦 Package Build Flow — Monorepo Build\n\n`;
