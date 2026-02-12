@@ -128,7 +128,7 @@ inputs:
     default: 'true'
   
   dependency-order:
-    description: 'Build packages in dependency order (topological sort)'
+    description: 'Build packages in dependency order (topological sort) when workspace metadata is available (requires workspace-detection enabled with discovered packages); has no effect when using explicit package-paths without workspace discovery'
     required: false
     default: 'true'
 

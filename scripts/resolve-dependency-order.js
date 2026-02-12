@@ -147,9 +147,10 @@ validPackages.forEach(pkg => {
   }
 });
 
-// Process queue
-while (queue.length > 0) {
-  const current = queue.shift();
+// Process queue with index pointer for O(n+e) performance
+let head = 0;
+while (head < queue.length) {
+  const current = queue[head++];
   sorted.push(current);
   
   // Process dependents

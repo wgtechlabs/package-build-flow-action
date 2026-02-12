@@ -875,7 +875,11 @@ By default, the action detects which packages changed and only builds/publishes 
 
 #### Dependency-Aware Build Ordering
 
-The action automatically orders packages based on their workspace dependencies using topological sort. This ensures dependencies are built before their dependents.
+The action automatically orders packages based on their workspace dependencies using topological sort when workspace metadata is available. This ensures dependencies are built before their dependents.
+
+**Requirements:**
+- Requires `workspace-detection: 'true'` (default) with valid workspace packages discovered
+- When using explicit `package-paths` without workspace discovery, ordering is not available
 
 **Example:**
 ```yaml

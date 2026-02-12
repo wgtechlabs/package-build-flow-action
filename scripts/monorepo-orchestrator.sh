@@ -313,6 +313,10 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
   fi
   
   echo ""
+elif [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PKG_COUNT" -eq 0 ]; then
+  echo "ℹ️  Dependency ordering not applicable (no workspace packages discovered)"
+  echo "📦 Using provided package order"
+  echo ""
 elif [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" != "true" ]; then
   echo "ℹ️  Dependency ordering not applicable (workspace-detection disabled)"
   echo "📦 Using original package order"
