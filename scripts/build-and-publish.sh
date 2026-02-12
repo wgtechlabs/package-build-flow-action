@@ -86,6 +86,8 @@ fi
 if [ "$PACKAGE_MANAGER" = "auto" ]; then
   if [ -f "bun.lockb" ]; then
     PKG_MANAGER="bun"
+  elif [ -f "bun.lock" ]; then
+    PKG_MANAGER="bun"
   elif [ -f "pnpm-lock.yaml" ]; then
     PKG_MANAGER="pnpm"
   elif [ -f "yarn.lock" ]; then

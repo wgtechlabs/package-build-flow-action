@@ -27,6 +27,7 @@ ROOT_CONFIG_FILES=(
   "package-lock.json"
   "pnpm-lock.yaml"
   "bun.lockb"
+  "bun.lock"
 )
 
 # Determine comparison base depending on the GitHub event
