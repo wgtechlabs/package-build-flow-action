@@ -23,7 +23,8 @@ if [ "$MONOREPO_MODE" = "true" ]; then
   
   # Parse BUILD_RESULTS_JSON to extract package information
   # Use npm-published/github-published flags to determine actual publish status
-  PACKAGES_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select((.["npm-published"] == "true") or (.["github-published"] == "true")) | .name] | join(",")')
+  # Only include packages that were published AND have result "success"
+  PACKAGES_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select((.result == "success") and ((.["npm-published"] == "true") or (.["github-published"] == "true"))) | .name] | join(",")')
   PACKAGES_FAILED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.result == "failed") | .name] | join(",")')
   TOTAL_PACKAGES=$(echo "$BUILD_RESULTS_JSON" | jq '. | length')
   

@@ -275,7 +275,6 @@ runs:
         MONOREPO_MODE: 'true'
         BUILD_RESULTS_JSON: ${{ steps.monorepo-orchestrator.outputs.build-results }}
         DISCOVERED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.discovered-packages }}
-        CHANGED_PACKAGES_JSON: ${{ steps.monorepo-orchestrator.outputs.changed-packages }}
         REGISTRY: ${{ inputs.registry }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}

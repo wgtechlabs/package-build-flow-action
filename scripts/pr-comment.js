@@ -29,7 +29,6 @@ const MONOREPO_MODE = process.env.MONOREPO_MODE === 'true';
 // Monorepo-specific variables
 const BUILD_RESULTS_JSON = process.env.BUILD_RESULTS_JSON || '[]';
 const DISCOVERED_PACKAGES_JSON = process.env.DISCOVERED_PACKAGES_JSON || '[]';
-const CHANGED_PACKAGES_JSON = process.env.CHANGED_PACKAGES_JSON || '[]';
 
 // Get PR number
 const prNumber = GITHUB_CONTEXT.event?.pull_request?.number;

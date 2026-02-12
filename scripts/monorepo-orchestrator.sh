@@ -428,7 +428,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg result "$RESULT" \
       --arg error "$ERROR_MESSAGE" \
       '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
-    rm -f "$TEMP_OUTPUT"
+    rm -f "$TEMP_OUTPUT" "$PACKAGE_OUTPUT"
     echo ""
     continue
   fi
@@ -467,7 +467,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
         --arg result "$RESULT" \
         --arg error "$ERROR_MESSAGE" \
         '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": "false", "github-published": "false"}]')
-      rm -f "$TEMP_OUTPUT"
+      rm -f "$TEMP_OUTPUT" "$PACKAGE_OUTPUT"
       echo ""
       continue
     fi
