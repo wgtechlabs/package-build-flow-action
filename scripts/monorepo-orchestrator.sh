@@ -241,6 +241,92 @@ else
   echo "changed-count=-1" >> "$GITHUB_OUTPUT"
 fi
 
+# Dependency Order Resolution
+# Only applicable when workspace-detection is enabled (need package metadata)
+if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PKG_COUNT" -gt 0 ]; then
+  echo "🔄 Resolving dependency order..."
+  echo ""
+  
+  # Prepare packages JSON for the Node.js script
+  # We need to build a JSON array of packages currently in PACKAGE_ARRAY
+  # Match them with the discovered packages metadata
+  
+  # Build associative array for O(1) lookup of package paths
+  declare -A PATH_LOOKUP=()
+  for pkg_path in "${PACKAGE_ARRAY[@]}"; do
+    PATH_LOOKUP["$pkg_path"]=1
+  done
+  
+  # Filter discovered packages to only those in PACKAGE_ARRAY
+  # Using index() for compatibility with jq 1.5+ (IN() requires jq 1.6+)
+  PACKAGES_FOR_ORDERING=$(echo "$DISCOVERED_PACKAGES" | jq --argjson paths "$(printf '%s\n' "${!PATH_LOOKUP[@]}" | jq -R . | jq -s .)" '
+    [.[] | select(.path as $p | $paths | index($p) != null)]
+  ')
+  
+  # Run dependency order resolution script
+  DEP_ORDER_OUTPUT=$(mktemp)
+  DEP_ORDER_OUTPUTS=$(mktemp)
+  
+  # Save current GITHUB_OUTPUT location
+  ORIGINAL_OUTPUT="$GITHUB_OUTPUT"
+  export GITHUB_OUTPUT="$DEP_ORDER_OUTPUTS"
+  
+  export PACKAGES_JSON="$PACKAGES_FOR_ORDERING"
+  
+  if node "$ACTION_PATH/scripts/resolve-dependency-order.js" > "$DEP_ORDER_OUTPUT" 2>&1; then
+    cat "$DEP_ORDER_OUTPUT"
+    
+    # Read ordered packages from output
+    if [ -f "$DEP_ORDER_OUTPUTS" ]; then
+      ORDERED_PACKAGES_JSON=$(grep "^ordered-packages=" "$DEP_ORDER_OUTPUTS" | tail -1 | cut -d= -f2-)
+      
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+      
+      if [ -n "$ORDERED_PACKAGES_JSON" ] && [ "$ORDERED_PACKAGES_JSON" != "null" ]; then
+        # Update PACKAGE_ARRAY with ordered paths using mapfile to avoid comma issues
+        mapfile -t PACKAGE_ARRAY < <(echo "$ORDERED_PACKAGES_JSON" | jq -r '.[].path')
+        
+        # Recompute total packages after reordering and ensure we still have work to do
+        TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+        if [ "$TOTAL_PACKAGES" -eq 0 ]; then
+          echo "❌ Error: Dependency ordering produced an empty package list"
+          rm -f "$DEP_ORDER_OUTPUT" "$DEP_ORDER_OUTPUTS"
+          exit 1
+        fi
+        
+        echo "✅ Packages reordered based on dependencies"
+      else
+        echo "⚠️  Warning: Could not parse ordered packages, using original order"
+      fi
+    else
+      export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+      echo "⚠️  Warning: Dependency ordering output not found, using original order"
+    fi
+    
+    rm -f "$DEP_ORDER_OUTPUT" "$DEP_ORDER_OUTPUTS"
+  else
+    cat "$DEP_ORDER_OUTPUT"
+    export GITHUB_OUTPUT="$ORIGINAL_OUTPUT"
+    echo "❌ Error: Dependency ordering failed"
+    rm -f "$DEP_ORDER_OUTPUT" "$DEP_ORDER_OUTPUTS"
+    exit 1
+  fi
+  
+  echo ""
+elif [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ "$DISCOVERED_PKG_COUNT" -eq 0 ]; then
+  echo "ℹ️  Dependency ordering not applicable (no workspace packages discovered)"
+  echo "📦 Using provided package order"
+  echo ""
+elif [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" != "true" ]; then
+  echo "ℹ️  Dependency ordering not applicable (workspace-detection disabled)"
+  echo "📦 Using original package order"
+  echo ""
+elif [ "$DEPENDENCY_ORDER" != "true" ]; then
+  echo "ℹ️  Dependency ordering disabled (dependency-order: false)"
+  echo "📦 Using discovery order"
+  echo ""
+fi
+
 # Process each package
 for i in "${!PACKAGE_ARRAY[@]}"; do
   PACKAGE_PATH="${PACKAGE_ARRAY[$i]}"

@@ -204,6 +204,7 @@ Tag: patch
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
 | `changed-only` | Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only). Uses git diff to detect changes. | `true` | No |
+| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Set to `false` to use discovery order. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
@@ -871,6 +872,75 @@ By default, the action detects which packages changed and only builds/publishes 
   }
 ]
 ```
+
+#### Dependency-Aware Build Ordering
+
+The action automatically orders packages based on their workspace dependencies using topological sort when workspace metadata is available. This ensures dependencies are built before their dependents.
+
+**Requirements:**
+- Requires `workspace-detection: 'true'` (default) with valid workspace packages discovered
+- When using explicit `package-paths` without workspace discovery, ordering is not available
+
+**Example:**
+```yaml
+- name: Build Packages in Dependency Order
+  uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    monorepo: 'true'
+    # dependency-order: 'true' (default - build in dependency order)
+    npm-token: ${{ secrets.NPM_TOKEN }}
+```
+
+**How it works:**
+- Analyzes `dependencies`, `peerDependencies`, and `devDependencies` in each package.json
+- Filters to only workspace-internal dependencies (ignores external npm packages)
+- Performs topological sort using Kahn's algorithm
+- Builds packages in the correct order (dependencies before dependents)
+- Detects and reports circular dependencies with clear error messages
+- Supports `workspace:*` protocol and standard version ranges
+
+**Example dependency graph:**
+```
+@tinyclaw/core           → no workspace deps
+@tinyclaw/plugin-discord → depends on @tinyclaw/core
+@tinyclaw/plugin-slack   → depends on @tinyclaw/core
+tinyclaw (CLI)           → depends on @tinyclaw/core, @tinyclaw/plugin-discord, @tinyclaw/plugin-slack
+```
+
+**Build order output:**
+```
+📋 Build order:
+  1. @tinyclaw/core (no workspace deps)
+  2. @tinyclaw/plugin-discord (depends on: @tinyclaw/core)
+  3. @tinyclaw/plugin-slack (depends on: @tinyclaw/core)
+  4. tinyclaw (depends on: @tinyclaw/core, @tinyclaw/plugin-discord, @tinyclaw/plugin-slack)
+```
+
+**Circular dependency detection:**
+If circular dependencies are found, the build fails with a clear error:
+```
+❌ Circular dependency detected among: @tinyclaw/plugin-a, @tinyclaw/plugin-b
+
+Dependency graph for these packages:
+  @tinyclaw/plugin-a → @tinyclaw/plugin-b
+  @tinyclaw/plugin-b → @tinyclaw/plugin-a
+```
+
+**To disable dependency ordering and use discovery order:**
+```yaml
+- name: Build in Discovery Order
+  uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    monorepo: 'true'
+    dependency-order: 'false'  # Disable dependency ordering
+    npm-token: ${{ secrets.NPM_TOKEN }}
+```
+
+**Benefits:**
+- 🔗 Correct build order - dependencies built before dependents
+- 🚀 Reliable monorepo builds - no dependency resolution failures
+- 🔍 Early error detection - circular dependencies caught immediately
+- 💎 Works with complex dependency graphs including diamond dependencies
 
 **Discovered Packages Output:**
 ```json
