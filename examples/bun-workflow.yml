@@ -1,0 +1,32 @@
+name: Bun Build and Publish
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: Build and Publish Package
+        uses: wgtechlabs/package-build-flow-action@v1
+        with:
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          registry: 'both'
+          package-manager: 'auto'  # Will detect bun.lock (v1.2+) or bun.lockb (legacy)
