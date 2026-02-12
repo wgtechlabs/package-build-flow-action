@@ -26,8 +26,8 @@ ROOT_CONFIG_FILES=(
   "yarn.lock"
   "package-lock.json"
   "pnpm-lock.yaml"
-  "bun.lockb"
-  "bun.lock"
+  "bun.lockb"  # Bun legacy binary lockfile (< v1.2)
+  "bun.lock"   # Bun text-based lockfile (v1.2+)
 )
 
 # Determine comparison base depending on the GitHub event
