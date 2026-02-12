@@ -270,7 +270,7 @@ When `package-manager: 'auto'` (default), the action automatically selects the p
 5. If `package-lock.json` exists → Uses **npm**
 6. Neither → Falls back to **npm**
 
-This ensures lockfile consistency and preserves backward compatibility. The action checks for `bun.lockb` first to support legacy Bun projects, then checks for `bun.lock` for modern Bun v1.2+ projects.
+This ensures lockfile consistency and preserves backward compatibility. The action checks for `bun.lockb` first to support legacy Bun projects, then checks for `bun.lock` for modern Bun v1.2+ projects. **Note:** If both `bun.lockb` and `bun.lock` exist in a project, `bun.lockb` takes precedence to ensure consistent behavior for projects in transition.
 
 #### Manual Selection
 
