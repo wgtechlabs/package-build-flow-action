@@ -164,9 +164,42 @@ if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   "$PKG_MANAGER" run test || echo "⚠️  Tests failed but continuing..."
 fi
 
+# Resolve workspace protocol dependencies before publishing
+# This converts workspace:* references to actual semver versions
+WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
+WORKSPACE_RESOLVED=false
+
+if [ -n "$DISCOVERED_PACKAGES" ] && [ "$DISCOVERED_PACKAGES" != "[]" ]; then
+  echo ""
+  echo "🔄 Checking for workspace protocol dependencies..."
+  
+  # Create backup of package.json before resolution
+  cp "$PACKAGE_PATH" "$WORKSPACE_BACKUP"
+  
+  # Run workspace protocol resolution
+  if node "$ACTION_PATH/scripts/resolve-workspace-protocol.js"; then
+    WORKSPACE_RESOLVED=true
+    echo "✅ Workspace protocol resolution completed"
+  else
+    echo "⚠️  Warning: Workspace protocol resolution failed, continuing with original package.json"
+    # Restore backup if resolution failed
+    if [ -f "$WORKSPACE_BACKUP" ]; then
+      mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+    fi
+  fi
+  echo ""
+fi
+
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
+  
+  # Restore workspace backup if it exists
+  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+    mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+    echo "📝 Restored original package.json"
+  fi
+  
   echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
   echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
   exit 0
@@ -223,6 +256,12 @@ if [ "$DRY_RUN" = "true" ]; then
       jq --arg name "$ORIGINAL_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
       mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
     fi
+  fi
+  
+  # Restore workspace backup if it exists
+  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+    mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+    echo "📝 Restored original package.json"
   fi
   
   echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
@@ -308,6 +347,13 @@ echo "✅ Build and publish complete"
 echo "  NPM Published: $NPM_PUBLISHED"
 echo "  GitHub Published: $GITHUB_PUBLISHED"
 echo ""
+
+# Restore original package.json if workspace protocol was resolved
+if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+  mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+  echo "📝 Restored original package.json with workspace protocol"
+  echo ""
+fi
 
 # Set outputs
 echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
