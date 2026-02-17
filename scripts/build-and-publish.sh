@@ -169,7 +169,8 @@ fi
 WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
 WORKSPACE_RESOLVED=false
 
-if [ -n "$DISCOVERED_PACKAGES" ] && [ "$DISCOVERED_PACKAGES" != "[]" ]; then
+# Check if DISCOVERED_PACKAGES is available and contains packages (using jq for robust check)
+if [ -n "$DISCOVERED_PACKAGES" ] && [ "$(echo "$DISCOVERED_PACKAGES" | jq '. | length')" -gt 0 ] 2>/dev/null; then
   echo ""
   echo "🔄 Checking for workspace protocol dependencies..."
   

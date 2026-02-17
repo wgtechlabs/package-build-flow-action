@@ -61,6 +61,38 @@ try {
 let changesMade = false;
 const resolvedDeps = [];
 
+/**
+ * Resolve workspace protocol specifier to actual version
+ * @param {string} specifier - The part after "workspace:" (e.g., "*", "^", "~", "^1.0.0")
+ * @param {string} actualVersion - The actual version from the workspace package
+ * @returns {string} - The resolved version string
+ */
+function resolveSpecifier(specifier, actualVersion) {
+  // workspace:* → exact version
+  if (specifier === '*') {
+    return actualVersion;
+  }
+  
+  // workspace:^ → ^version
+  if (specifier === '^') {
+    return `^${actualVersion}`;
+  }
+  
+  // workspace:~ → ~version
+  if (specifier === '~') {
+    return `~${actualVersion}`;
+  }
+  
+  // workspace:^1.0.0 or workspace:~1.0.0 or workspace:>=1.0.0
+  // Strip "workspace:" prefix, keep the range specifier
+  if (specifier.match(/^[\^~>=<]/)) {
+    return specifier;
+  }
+  
+  // Other formats → use as-is or default to exact version
+  return specifier || actualVersion;
+}
+
 // Dependency types to check
 const depTypes = ['dependencies', 'devDependencies', 'peerDependencies'];
 
@@ -87,25 +119,8 @@ depTypes.forEach(depType => {
         return;
       }
       
-      let resolvedVersion;
-      
-      // Resolve based on specifier type
-      if (specifier === '*') {
-        // workspace:* → exact version
-        resolvedVersion = actualVersion;
-      } else if (specifier === '^') {
-        // workspace:^ → ^version
-        resolvedVersion = `^${actualVersion}`;
-      } else if (specifier === '~') {
-        // workspace:~ → ~version
-        resolvedVersion = `~${actualVersion}`;
-      } else if (specifier.match(/^[\^~>=<]/)) {
-        // workspace:^1.0.0 or workspace:~1.0.0 → strip prefix, keep range
-        resolvedVersion = specifier;
-      } else {
-        // Other formats → use as-is or default to exact version
-        resolvedVersion = specifier || actualVersion;
-      }
+      // Resolve the specifier to actual version
+      const resolvedVersion = resolveSpecifier(specifier, actualVersion);
       
       // Update the dependency
       deps[depName] = resolvedVersion;
