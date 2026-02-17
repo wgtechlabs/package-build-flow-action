@@ -59,6 +59,7 @@ try {
 // Track if any changes were made
 let changesMade = false;
 const resolvedDeps = [];
+const unresolvedDeps = [];
 
 /**
  * Resolve workspace protocol specifier to actual version
@@ -113,8 +114,23 @@ depTypes.forEach(depType => {
       const actualVersion = packageVersionMap.get(depName);
       
       if (!actualVersion) {
-        console.log(`⚠️  Warning: Workspace dependency "${depName}" not found in discovered packages`);
-        console.log(`   Keeping original value: ${depVersion}`);
+        // Track unresolved dependencies
+        unresolvedDeps.push({
+          name: depName,
+          type: depType,
+          original: depVersion
+        });
+        
+        // For critical dependency types (dependencies, peerDependencies), fail
+        if (depType === 'dependencies' || depType === 'peerDependencies') {
+          console.error(`❌ Error: Workspace dependency "${depName}" (${depType}) not found in discovered packages`);
+          console.error(`   Cannot resolve: ${depVersion}`);
+          console.error(`   This would result in a broken package on the registry.`);
+        } else {
+          // For devDependencies, just warn
+          console.log(`⚠️  Warning: Workspace dependency "${depName}" (${depType}) not found in discovered packages`);
+          console.log(`   Keeping original value: ${depVersion}`);
+        }
         return;
       }
       
@@ -134,6 +150,23 @@ depTypes.forEach(depType => {
     }
   });
 });
+
+// Check if we have critical unresolved dependencies
+const criticalUnresolved = unresolvedDeps.filter(dep => 
+  dep.type === 'dependencies' || dep.type === 'peerDependencies'
+);
+
+if (criticalUnresolved.length > 0) {
+  console.error('');
+  console.error(`❌ Found ${criticalUnresolved.length} unresolved workspace dependencies in critical fields:`);
+  criticalUnresolved.forEach(dep => {
+    console.error(`   - ${dep.name} (${dep.type}): ${dep.original}`);
+  });
+  console.error('');
+  console.error('Publishing with unresolved workspace protocols would create a broken package.');
+  console.error('Ensure all workspace dependencies are discovered and available.');
+  process.exit(1);
+}
 
 if (changesMade) {
   console.log('📝 Resolved workspace dependencies:');
