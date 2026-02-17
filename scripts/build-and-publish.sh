@@ -164,9 +164,53 @@ if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
   "$PKG_MANAGER" run test || echo "⚠️  Tests failed but continuing..."
 fi
 
+# Resolve workspace protocol dependencies before publishing
+# This converts workspace:* references to actual semver versions
+WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
+WORKSPACE_BACKUP_EXISTS=false
+
+# Setup trap to restore workspace backup on exit
+cleanup_workspace_backup() {
+  if [ "$WORKSPACE_BACKUP_EXISTS" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+    if mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH" 2>/dev/null; then
+      echo "📝 Restored original package.json with workspace protocol" >&2
+      # Clean up backup file only after successful restore
+      rm -f "$WORKSPACE_BACKUP" 2>/dev/null || true
+      WORKSPACE_BACKUP_EXISTS=false
+    else
+      echo "⚠️  Failed to restore original package.json; backup retained at '$WORKSPACE_BACKUP'" >&2
+    fi
+  fi
+}
+trap cleanup_workspace_backup EXIT INT TERM
+
+# Check if DISCOVERED_PACKAGES is available and contains packages (using jq for robust check)
+if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="array" and length>0' >/dev/null 2>&1; then
+  echo ""
+  echo "🔄 Checking for workspace protocol dependencies..."
+  
+  # Create backup of package.json before resolution
+  cp "$PACKAGE_PATH" "$WORKSPACE_BACKUP"
+  WORKSPACE_BACKUP_EXISTS=true
+  
+  # Run workspace protocol resolution
+  if node "$ACTION_PATH/scripts/resolve-workspace-protocol.js"; then
+    echo "✅ Workspace protocol resolution completed"
+  else
+    echo "⚠️  Warning: Workspace protocol resolution failed, continuing with original package.json"
+    # Restore backup if resolution failed
+    if [ -f "$WORKSPACE_BACKUP" ]; then
+      mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+      WORKSPACE_BACKUP_EXISTS=false
+    fi
+  fi
+  echo ""
+fi
+
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
+  
   echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
   echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
   exit 0
@@ -312,3 +356,5 @@ echo ""
 # Set outputs
 echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
 echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+
+# Note: Workspace backup restoration happens automatically via EXIT trap

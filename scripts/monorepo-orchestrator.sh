@@ -478,6 +478,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   echo "🏗️  Building and publishing..."
   export PACKAGE_VERSION
   export NPM_TAG
+  export DISCOVERED_PACKAGES
   
   # Save original GITHUB_OUTPUT and use per-package temp file
   ORIGINAL_GITHUB_OUTPUT="$GITHUB_OUTPUT"
