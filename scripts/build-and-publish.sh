@@ -167,11 +167,12 @@ fi
 # Resolve workspace protocol dependencies before publishing
 # This converts workspace:* references to actual semver versions
 WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
+WORKSPACE_BACKUP_EXISTS=false
 WORKSPACE_RESOLVED=false
 
 # Setup trap to restore workspace backup on exit
 cleanup_workspace_backup() {
-  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+  if [ "$WORKSPACE_BACKUP_EXISTS" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
     mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH" 2>/dev/null || true
     echo "📝 Restored original package.json with workspace protocol" >&2
   fi
@@ -187,6 +188,7 @@ if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="
   
   # Create backup of package.json before resolution
   cp "$PACKAGE_PATH" "$WORKSPACE_BACKUP"
+  WORKSPACE_BACKUP_EXISTS=true
   
   # Run workspace protocol resolution
   if node "$ACTION_PATH/scripts/resolve-workspace-protocol.js"; then
@@ -197,6 +199,7 @@ if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="
     # Restore backup if resolution failed
     if [ -f "$WORKSPACE_BACKUP" ]; then
       mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
+      WORKSPACE_BACKUP_EXISTS=false
     fi
   fi
   echo ""
