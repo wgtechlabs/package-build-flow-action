@@ -169,8 +169,19 @@ fi
 WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
 WORKSPACE_RESOLVED=false
 
+# Setup trap to restore workspace backup on exit
+cleanup_workspace_backup() {
+  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
+    mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH" 2>/dev/null || true
+    echo "📝 Restored original package.json with workspace protocol" >&2
+  fi
+  # Clean up backup file if it exists
+  rm -f "$WORKSPACE_BACKUP" 2>/dev/null || true
+}
+trap cleanup_workspace_backup EXIT INT TERM
+
 # Check if DISCOVERED_PACKAGES is available and contains packages (using jq for robust check)
-if [ -n "$DISCOVERED_PACKAGES" ] && [ "$(echo "$DISCOVERED_PACKAGES" | jq '. | length')" -gt 0 ] 2>/dev/null; then
+if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="array" and length>0' >/dev/null 2>&1; then
   echo ""
   echo "🔄 Checking for workspace protocol dependencies..."
   
@@ -194,12 +205,6 @@ fi
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
-  
-  # Restore workspace backup if it exists
-  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
-    mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
-    echo "📝 Restored original package.json"
-  fi
   
   echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
   echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
@@ -257,12 +262,6 @@ if [ "$DRY_RUN" = "true" ]; then
       jq --arg name "$ORIGINAL_NAME" '.name = $name' "$PACKAGE_PATH" > "${PACKAGE_PATH}.tmp"
       mv "${PACKAGE_PATH}.tmp" "$PACKAGE_PATH"
     fi
-  fi
-  
-  # Restore workspace backup if it exists
-  if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
-    mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
-    echo "📝 Restored original package.json"
   fi
   
   echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
@@ -349,13 +348,8 @@ echo "  NPM Published: $NPM_PUBLISHED"
 echo "  GitHub Published: $GITHUB_PUBLISHED"
 echo ""
 
-# Restore original package.json if workspace protocol was resolved
-if [ "$WORKSPACE_RESOLVED" = true ] && [ -f "$WORKSPACE_BACKUP" ]; then
-  mv "$WORKSPACE_BACKUP" "$PACKAGE_PATH"
-  echo "📝 Restored original package.json with workspace protocol"
-  echo ""
-fi
-
 # Set outputs
 echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
 echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+
+# Note: Workspace backup restoration happens automatically via EXIT trap

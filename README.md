@@ -985,7 +985,7 @@ The action automatically resolves `workspace:*` protocol dependencies to actual 
 ```
 
 **How it works:**
-- Automatically detects workspace protocol dependencies in all dependency fields
+- Automatically detects workspace protocol dependencies in dependencies, devDependencies, and peerDependencies
 - Looks up actual versions from discovered workspace packages
 - Resolves versions before running `npm publish`
 - Restores original `package.json` after publishing

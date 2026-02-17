@@ -7,7 +7,6 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 
 // Read inputs from environment
 const PACKAGE_PATH = process.env.PACKAGE_PATH || '';
