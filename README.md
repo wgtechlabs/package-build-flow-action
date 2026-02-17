@@ -808,6 +808,7 @@ jobs:
 - Returns JSON array with per-package results
 - Works with `dry-run` and `publish-enabled: false`
 - Supports both workspace auto-discovery and explicit package lists
+- Automatically resolves `workspace:*` protocol dependencies before publishing
 
 #### Automatic Change Detection
 
@@ -942,6 +943,59 @@ Dependency graph for these packages:
 - 🚀 Reliable monorepo builds - no dependency resolution failures
 - 🔍 Early error detection - circular dependencies caught immediately
 - 💎 Works with complex dependency graphs including diamond dependencies
+
+#### Workspace Protocol Resolution
+
+The action automatically resolves `workspace:*` protocol dependencies to actual semver versions before publishing to npm. This ensures that published packages are installable from the registry, as `workspace:*` is not a valid semver range on npm.
+
+**Supported workspace protocols:**
+- `workspace:*` → resolves to exact version (e.g., `1.2.3`)
+- `workspace:^` → resolves to caret range (e.g., `^1.2.3`)
+- `workspace:~` → resolves to tilde range (e.g., `~1.2.3`)
+- `workspace:^1.0.0` → strips prefix, keeps range (e.g., `^1.0.0`)
+
+**Example package.json before resolution:**
+```json
+{
+  "name": "@myorg/app",
+  "version": "2.0.0",
+  "dependencies": {
+    "@myorg/core": "workspace:*",
+    "@myorg/utils": "workspace:^"
+  },
+  "peerDependencies": {
+    "@myorg/core": "workspace:~"
+  }
+}
+```
+
+**After resolution (when @myorg/core is v1.2.3 and @myorg/utils is v3.4.5):**
+```json
+{
+  "name": "@myorg/app",
+  "version": "2.0.0",
+  "dependencies": {
+    "@myorg/core": "1.2.3",
+    "@myorg/utils": "^3.4.5"
+  },
+  "peerDependencies": {
+    "@myorg/core": "~1.2.3"
+  }
+}
+```
+
+**How it works:**
+- Automatically detects workspace protocol dependencies in all dependency fields
+- Looks up actual versions from discovered workspace packages
+- Resolves versions before running `npm publish`
+- Restores original `package.json` after publishing
+- Works with pnpm, Yarn, and Bun workspace protocols
+
+**Benefits:**
+- ✅ Published packages are installable from the registry
+- 🔄 Automatic resolution - no manual version updates needed
+- 🛡️ Original workspace protocols preserved in source control
+- 📦 Compatible with pnpm, Yarn Berry, and Bun workspaces
 
 **Discovered Packages Output:**
 ```json
