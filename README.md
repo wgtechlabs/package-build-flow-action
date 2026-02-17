@@ -989,7 +989,7 @@ The action automatically resolves `workspace:*` protocol dependencies to actual 
 - Looks up actual versions from discovered workspace packages
 - Resolves versions before running `npm publish`
 - Restores original `package.json` after publishing
-- Works with pnpm, Yarn, and Bun workspace protocols
+- Works with pnpm, Yarn Berry, and Bun workspace protocols
 
 **Benefits:**
 - ✅ Published packages are installable from the registry
