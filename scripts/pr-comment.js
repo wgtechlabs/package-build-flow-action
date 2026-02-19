@@ -361,7 +361,7 @@ function postComment(body) {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'User-Agent': 'package-build-flow-action',
         'Content-Type': 'application/json',
-        'Content-Length': data.length
+        'Content-Length': Buffer.byteLength(data, 'utf8')
       }
     };
     
