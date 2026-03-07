@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create Release
+        id: release
+        uses: wgtechlabs/release-build-flow-action@v1.6.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          update-major-tag: true
