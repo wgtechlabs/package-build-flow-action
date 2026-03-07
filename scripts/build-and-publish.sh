@@ -207,6 +207,12 @@ if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="
   echo ""
 fi
 
+# Bot detection override: force dry-run when bot actor detected
+if [ "${BOT_DRY_RUN:-false}" = "true" ]; then
+  echo "🤖 Bot actor detected — forcing validation-only mode (publish skipped)"
+  DRY_RUN="true"
+fi
+
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"

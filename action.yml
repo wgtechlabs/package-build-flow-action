@@ -132,6 +132,33 @@ inputs:
     required: false
     default: 'true'
 
+  # Commit Convention Gate (Smart Build Filtering)
+  commit-convention-enabled:
+    description: 'Enable smart build filtering based on commit message conventions. When enabled, only commits with build-relevant types (e.g., new, fix, update) trigger builds. Commits like docs or test changes are skipped.'
+    required: false
+    default: 'false'
+
+  commit-convention:
+    description: 'Commit message convention to parse. Affects default trigger/skip type lists when not explicitly overridden. clean-commit uses types like new, update, setup; conventional uses feat, fix, perf, etc.'
+    required: false
+    default: 'clean-commit'
+
+  build-trigger-types:
+    description: 'Comma-separated commit types that trigger a package build. If a type appears in both trigger and skip lists, skip takes priority. Leave empty to use convention-aware defaults.'
+    required: false
+    default: ''
+
+  build-skip-types:
+    description: 'Comma-separated commit types that skip the package build. Skip list is checked before trigger list, so skip takes priority if a type appears in both. Leave empty to use convention-aware defaults.'
+    required: false
+    default: ''
+
+  # Bot Detection
+  bot-detection:
+    description: 'Auto-detect bot actors (e.g., dependabot[bot], renovate[bot]) and gracefully fall back to validation-only mode (build and audit still run, publish is skipped). Prevents CI failures from missing secrets on bot-generated PRs.'
+    required: false
+    default: 'true'
+
 outputs:
   # Version Outputs
   package-version:
@@ -143,8 +170,8 @@ outputs:
     value: ${{ steps.generate-outputs.outputs.registry-urls }}
   
   build-flow-type:
-    description: 'Detected flow type (release, pr, dev, patch, staging, wip)'
-    value: ${{ steps.detect-flow.outputs.build-flow-type }}
+    description: 'Detected flow type (release, pr, dev, patch, staging, wip, skip). Returns skip when the commit convention gate blocks the build.'
+    value: ${{ steps.detect-flow.outputs.build-flow-type || steps.commit-gate.outputs.build-flow-type }}
   
   short-sha:
     description: 'Short commit SHA'
@@ -213,13 +240,81 @@ outputs:
     description: 'Number of packages with changes (monorepo mode)'
     value: ${{ steps.monorepo-generate-outputs.outputs.changed-packages-count }}
 
+  # Commit Convention Gate Outputs
+  commit-type:
+    description: 'Detected commit type from the commit message (e.g., new, fix, docs). Only populated when commit-convention-enabled is true.'
+    value: ${{ steps.commit-gate.outputs.commit-type }}
+
+  bot-detected:
+    description: 'Whether a bot actor was detected (true/false). Only populated when bot-detection is enabled.'
+    value: ${{ steps.bot-gate.outputs.is-bot }}
+
+  build-skip-reason:
+    description: 'Reason the build was skipped by the commit convention gate. Empty if the build proceeded (including validation-only mode from bot detection).'
+    value: ${{ steps.commit-gate.outputs.build-skip-reason }}
+
+  build-skipped:
+    description: 'Whether the build was fully skipped (true/false). True only when the commit convention gate blocks the build. Bot detection does not skip the build — it runs in validation-only mode instead.'
+    value: ${{ steps.commit-gate.outputs.should-build == 'false' && 'true' || 'false' }}
+
 runs:
   using: 'composite'
   steps:
+    # =============================================================================
+    # BOT DETECTION & COMMIT CONVENTION GATE
+    # =============================================================================
+
+    - name: Detect Bot Actor
+      id: bot-gate
+      shell: bash
+      run: |
+        ACTOR="${{ github.actor }}"
+        BOT_DETECTION="${{ inputs.bot-detection }}"
+
+        if [ "$BOT_DETECTION" != "true" ]; then
+          echo "is-bot=false" >> "$GITHUB_OUTPUT"
+          echo "ℹ️  Bot detection is disabled"
+          exit 0
+        fi
+
+        if [[ "$ACTOR" == *"[bot]"* ]]; then
+          echo "is-bot=true" >> "$GITHUB_OUTPUT"
+          echo "build-skip-reason=Bot actor: ${ACTOR}" >> "$GITHUB_OUTPUT"
+          echo "⚠️  Bot actor detected (${ACTOR}) — running in validation-only mode (no publish)"
+        else
+          echo "is-bot=false" >> "$GITHUB_OUTPUT"
+          echo "ℹ️  Actor '${ACTOR}' is not a bot"
+        fi
+
+    - name: Commit Convention Gate
+      id: commit-gate
+      shell: bash
+      run: |
+        # Skip build if bot actor was detected AND commit convention gate also skips
+        # Bot detection alone does NOT skip — it forces validation-only mode
+        # Only the commit convention gate can fully skip the build
+        if [ "$BOT_DETECTED" = "true" ] && [ "$COMMIT_CONVENTION_ENABLED" != "true" ]; then
+          echo "should-build=true" >> "$GITHUB_OUTPUT"
+          echo "ℹ️  Bot detected but commit convention gate disabled — proceeding with validation-only mode"
+          exit 0
+        fi
+        bash ${{ github.action_path }}/scripts/detect-commit-convention.sh
+      env:
+        BOT_DETECTED: ${{ steps.bot-gate.outputs.is-bot }}
+        COMMIT_CONVENTION_ENABLED: ${{ inputs.commit-convention-enabled }}
+        COMMIT_CONVENTION: ${{ inputs.commit-convention }}
+        BUILD_TRIGGER_TYPES: ${{ inputs.build-trigger-types }}
+        BUILD_SKIP_TYPES: ${{ inputs.build-skip-types }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+
+    # =============================================================================
+    # MONOREPO MODE
+    # =============================================================================
+
     # Monorepo Mode
     - name: Monorepo Orchestrator
       id: monorepo-orchestrator
-      if: inputs.monorepo == 'true'
+      if: inputs.monorepo == 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/monorepo-orchestrator.sh
@@ -249,10 +344,11 @@ runs:
         AUDIT_LEVEL: ${{ inputs.audit-level }}
         FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
         ACTION_PATH: ${{ github.action_path }}
+        BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
     
     - name: Generate Monorepo Outputs
       id: monorepo-generate-outputs
-      if: inputs.monorepo == 'true'
+      if: inputs.monorepo == 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/generate-outputs.sh
@@ -264,7 +360,7 @@ runs:
         CHANGED_COUNT: ${{ steps.monorepo-orchestrator.outputs.changed-count }}
     
     - name: Post Monorepo PR Comment
-      if: inputs.monorepo == 'true' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
+      if: inputs.monorepo == 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/pr-comment.js
@@ -282,10 +378,14 @@ runs:
         AUDIT_ENABLED: ${{ inputs.audit-enabled }}
         PR_COMMENT_TEMPLATE: ${{ inputs.pr-comment-template }}
     
+    # =============================================================================
+    # SINGLE PACKAGE MODE
+    # =============================================================================
+
     # Single Package Mode
     - name: Detect Build Flow
       id: detect-flow
-      if: inputs.monorepo != 'true'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/detect-package-flow.sh
@@ -298,7 +398,7 @@ runs:
     
     - name: Configure Registries
       id: configure-registries
-      if: inputs.monorepo != 'true'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/configure-registries.sh
@@ -314,7 +414,7 @@ runs:
     
     - name: Build and Publish Package
       id: publish
-      if: inputs.monorepo != 'true'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/build-and-publish.sh
@@ -332,10 +432,11 @@ runs:
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         ACCESS: ${{ inputs.access }}
+        BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
     
     - name: Run Security Audit
       id: audit
-      if: inputs.monorepo != 'true' && inputs.audit-enabled == 'true'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.audit-enabled == 'true'
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/audit-package.js
@@ -346,7 +447,7 @@ runs:
     
     - name: Generate Outputs
       id: generate-outputs
-      if: inputs.monorepo != 'true'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false'
       shell: bash
       run: |
         bash ${{ github.action_path }}/scripts/generate-outputs.sh
@@ -362,7 +463,7 @@ runs:
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Post PR Comment
-      if: inputs.monorepo != 'true' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
+      if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/pr-comment.js
