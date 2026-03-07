@@ -47,3 +47,4 @@ coverage/
 .env
 .env.local
 .env.*.local
+.contributerc.json
