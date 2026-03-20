@@ -3,7 +3,7 @@
 ![GitHub Repo Banner](https://ghrb.waren.build/banner?header=Package+Build+Flow+%F0%9F%93%A6%E2%99%BB%EF%B8%8F&subheader=Automated+NPM+package+versioning%2C+building%2C+and+publishing.&bg=016EEA-016EEA&color=FFFFFF&headerfont=Google+Sans+Code&subheaderfont=Sour+Gummy&watermarkpos=bottom-right)
 <!-- Created with GitHub Repo Banner by Waren Gonzaga: https://ghrb.waren.build -->
 
-Automated NPM package versioning, building, and publishing with intelligent flow detection for NPM Registry and GitHub Packages.
+Automated JavaScript package versioning, building, and publishing with intelligent flow detection for NPM Registry and GitHub Packages.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -14,7 +14,7 @@ Automated NPM package versioning, building, and publishing with intelligent flow
 - 🏢 **Monorepo Support**: Process multiple packages independently with their own versions
 - ✨ **Auto-Scoping**: Automatically scopes packages for GitHub Packages using repository owner
 - 🏷️ **Smart Versioning**: SemVer versioning with pre-release tags
-- 🔒 **Security Scanning**: Built-in npm audit integration
+- 🔒 **Security Scanning**: Built-in package-manager-aware audit integration
 - 💬 **PR Comments**: Automatic installation instructions in pull requests
 - 🎯 **Dist-tag Management**: Non-latest tags for pre-releases to keep production clean
 - 🚀 **Zero Configuration**: Works out of the box with sensible defaults
@@ -177,7 +177,7 @@ Tag: patch
 
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
-| `audit-enabled` | Enable npm audit security scanning | `true` | No |
+| `audit-enabled` | Enable package-manager-aware security scanning (`npm audit` or `bun audit`) | `true` | No |
 | `audit-level` | Minimum severity level: `critical`, `high`, `moderate`, `low` | `high` | No |
 | `fail-on-audit` | Fail build if vulnerabilities found | `false` | No |
 
@@ -204,7 +204,7 @@ Tag: patch
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
 | `changed-only` | Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only). Uses git diff to detect changes. | `true` | No |
-| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Set to `false` to use discovery order. | `true` | No |
+| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Works with Bun-only monorepos through the same runtime-aware helper execution used elsewhere in the action. Set to `false` to use discovery order. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
@@ -287,15 +287,11 @@ Explicitly specify the package manager:
 
 ##### Bun
 
-For Bun-based projects, install both Node.js (for publishing) and Bun (for building):
+For Bun-based projects, you can use a Bun-only workflow:
 
 ```yaml
 steps:
   - uses: actions/checkout@v4
-
-  - uses: actions/setup-node@v4
-    with:
-      node-version: '20'
 
   - uses: oven-sh/setup-bun@v2
     with:
@@ -307,6 +303,8 @@ steps:
       npm-token: ${{ secrets.NPM_TOKEN }}
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so Bun-only workflows do not need `actions/setup-node`.
 
 ##### pnpm
 
@@ -352,7 +350,7 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Note:** This action always uses the npm CLI for the final publish step, regardless of the selected package manager. While Bun, pnpm, and Yarn can publish to the npm registry, this action standardizes on npm for publishing to ensure consistent behavior across environments.
+**Note:** Publishing and auditing are package-manager-aware. Bun projects use Bun-native helpers (`bun audit`, `bun publish`, and Bun to run JS helper scripts), while npm/pnpm/yarn projects continue to use the existing npm-based publish/audit behavior. Registry authentication still relies on `.npmrc`, which Bun can consume for npm and GitHub Packages.
 
 ### NPM Registry Setup
 
@@ -513,7 +511,7 @@ npm install mypackage@latest
 
 ## Security Scanning
 
-The action includes built-in npm audit integration:
+The action includes built-in package-manager-aware security scanning:
 
 ```yaml
 - uses: wgtechlabs/package-build-flow-action@v1
@@ -987,7 +985,7 @@ The action automatically resolves `workspace:*` protocol dependencies to actual 
 **How it works:**
 - Automatically detects workspace protocol dependencies in dependencies, devDependencies, and peerDependencies
 - Looks up actual versions from discovered workspace packages
-- Resolves versions before running `npm publish`
+- Resolves versions before publishing with the selected package manager
 - Restores original `package.json` after publishing
 - Works with pnpm, Yarn Berry, and Bun workspace protocols
 
