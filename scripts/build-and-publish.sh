@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Build and Publish NPM Package
+# Build and Publish Package
 # Handles versioning, building, and publishing to registries
 
 echo "🏗️  Building and publishing package..."
@@ -27,7 +27,26 @@ echo "🏷️  NPM Tag: $NPM_TAG"
 
 # Change to package directory
 WORKSPACE_ROOT="$PWD"
+export WORKSPACE_ROOT
 cd "$PACKAGE_DIR"
+
+has_lockfile() {
+  local filename="$1"
+  [ -f "$filename" ] || [ -f "$WORKSPACE_ROOT/$filename" ]
+}
+
+run_install_in_dir() {
+  local target_dir="$1"
+  shift
+  if [ "$PWD" = "$target_dir" ]; then
+    "$@"
+  else
+    (
+      cd "$target_dir"
+      "$@"
+    )
+  fi
+}
 
 # Ensure .npmrc is available in the package directory
 # (configure-registries.sh writes it to the workspace root)
@@ -85,15 +104,15 @@ fi
 # Resolve package manager based on input or auto-detection
 if [ "$PACKAGE_MANAGER" = "auto" ]; then
   # Check for Bun lockfiles - bun.lockb (legacy) takes precedence for backward compatibility
-  if [ -f "bun.lockb" ]; then
+  if has_lockfile "bun.lockb"; then
     PKG_MANAGER="bun"
-  elif [ -f "bun.lock" ]; then
+  elif has_lockfile "bun.lock"; then
     PKG_MANAGER="bun"
-  elif [ -f "pnpm-lock.yaml" ]; then
+  elif has_lockfile "pnpm-lock.yaml"; then
     PKG_MANAGER="pnpm"
-  elif [ -f "yarn.lock" ]; then
+  elif has_lockfile "yarn.lock"; then
     PKG_MANAGER="yarn"
-  elif [ -f "package-lock.json" ]; then
+  elif has_lockfile "package-lock.json"; then
     PKG_MANAGER="npm"
   else
     PKG_MANAGER="npm"
@@ -124,23 +143,29 @@ echo "📦 Using package manager: $PKG_MANAGER"
 
 # Install dependencies
 echo "📥 Installing dependencies..."
+INSTALL_DIR="$PACKAGE_DIR"
+if [ "$PKG_MANAGER" = "bun" ] && { [ -f "$WORKSPACE_ROOT/bun.lockb" ] || [ -f "$WORKSPACE_ROOT/bun.lock" ]; } && { [ ! -f "$PACKAGE_DIR/bun.lockb" ] && [ ! -f "$PACKAGE_DIR/bun.lock" ]; }; then
+  INSTALL_DIR="$WORKSPACE_ROOT"
+  echo "📍 Running Bun install from workspace root: $INSTALL_DIR"
+fi
+
 if [ "$PKG_MANAGER" = "bun" ]; then
-  bun install --frozen-lockfile
+  run_install_in_dir "$INSTALL_DIR" bun install --frozen-lockfile
 elif [ "$PKG_MANAGER" = "pnpm" ]; then
-  pnpm install --frozen-lockfile
+  run_install_in_dir "$INSTALL_DIR" pnpm install --frozen-lockfile
 elif [ "$PKG_MANAGER" = "yarn" ]; then
   # Yarn v1 uses --frozen-lockfile, Yarn v2+ uses --immutable
   # Check major version number
   YARN_MAJOR_VERSION=$(yarn --version | cut -d. -f1)
   if [ "$YARN_MAJOR_VERSION" -ge 2 ]; then
-    yarn install --immutable
+    run_install_in_dir "$INSTALL_DIR" yarn install --immutable
   else
-    yarn install --frozen-lockfile
+    run_install_in_dir "$INSTALL_DIR" yarn install --frozen-lockfile
   fi
-elif [ -f "package-lock.json" ]; then
-  npm ci
+elif has_lockfile "package-lock.json"; then
+  run_install_in_dir "$INSTALL_DIR" npm ci
 else
-  npm install
+  run_install_in_dir "$INSTALL_DIR" npm install
 fi
 
 echo "✅ Dependencies installed"
@@ -194,7 +219,7 @@ if [ -n "$DISCOVERED_PACKAGES" ] && echo "$DISCOVERED_PACKAGES" | jq -e 'type=="
   WORKSPACE_BACKUP_EXISTS=true
   
   # Run workspace protocol resolution
-  if node "$ACTION_PATH/scripts/resolve-workspace-protocol.js"; then
+  if bash "$ACTION_PATH/scripts/run-js-file.sh" "$ACTION_PATH/scripts/resolve-workspace-protocol.js"; then
     echo "✅ Workspace protocol resolution completed"
   else
     echo "⚠️  Warning: Workspace protocol resolution failed, continuing with original package.json"
@@ -213,6 +238,29 @@ if [ "${BOT_DRY_RUN:-false}" = "true" ]; then
   DRY_RUN="true"
 fi
 
+# Publish package using the selected package manager
+publish_package() {
+  local registry_url="$1"
+  local dry_run="$2"
+
+  local publish_cmd=()
+  if [ "$PKG_MANAGER" = "bun" ]; then
+    publish_cmd=(bun publish --tag "$NPM_TAG" --registry "$registry_url")
+  else
+    publish_cmd=(npm publish --tag "$NPM_TAG" --registry "$registry_url")
+  fi
+
+  if [ "$dry_run" = "true" ]; then
+    publish_cmd+=(--dry-run)
+  fi
+
+  if [[ "$PACKAGE_NAME" == @*/* ]]; then
+    publish_cmd+=(--access "$ACCESS")
+  fi
+
+  "${publish_cmd[@]}"
+}
+
 # Check if publishing is enabled
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
@@ -228,12 +276,7 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    # Only add --access flag for scoped packages (@scope/name)
-    if [[ "$PACKAGE_NAME" == @*/* ]]; then
-      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"
-    else
-      npm publish --dry-run --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"
-    fi
+    publish_package "$NPM_REGISTRY_URL" "true"
     NPM_PUBLISHED="dry-run"
   fi
   
@@ -265,7 +308,7 @@ if [ "$DRY_RUN" = "true" ]; then
       echo "📝 Scoped package name: $SCOPED_NAME"
     fi
     
-    npm publish --dry-run --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"
+    publish_package "$GITHUB_REGISTRY_URL" "true"
     GITHUB_PUBLISHED="dry-run"
     
     # Restore original name if changed
@@ -284,23 +327,12 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  # Only add --access flag for scoped packages (@scope/name)
-  if [[ "$PACKAGE_NAME" == @*/* ]]; then
-    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL" --access "$ACCESS"; then
-      NPM_PUBLISHED="true"
-      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
-    else
-      echo "❌ Failed to publish to NPM"
-      NPM_PUBLISHED="false"
-    fi
+  if publish_package "$NPM_REGISTRY_URL" "false"; then
+    NPM_PUBLISHED="true"
+    echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
   else
-    if npm publish --tag "$NPM_TAG" --registry "$NPM_REGISTRY_URL"; then
-      NPM_PUBLISHED="true"
-      echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
-    else
-      echo "❌ Failed to publish to NPM"
-      NPM_PUBLISHED="false"
-    fi
+    echo "❌ Failed to publish to NPM"
+    NPM_PUBLISHED="false"
   fi
 fi
 
@@ -336,7 +368,7 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     NEEDS_RESTORE=true
   fi
   
-  if npm publish --tag "$NPM_TAG" --registry "$GITHUB_REGISTRY_URL" --access "$ACCESS"; then
+  if publish_package "$GITHUB_REGISTRY_URL" "false"; then
     GITHUB_PUBLISHED="true"
     PUBLISHED_NAME=$(jq -r '.name' "$PACKAGE_PATH")
     echo "✅ Published to GitHub Packages: $PUBLISHED_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"

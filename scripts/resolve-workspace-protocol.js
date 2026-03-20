@@ -3,7 +3,7 @@
 /**
  * Workspace Protocol Resolution Script
  * Resolves workspace:* protocol dependencies to actual semver versions
- * before npm publish
+ * before publishing
  */
 
 const fs = require('fs');

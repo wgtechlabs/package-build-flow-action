@@ -517,7 +517,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   echo ""
   if [ "$AUDIT_ENABLED" = "true" ]; then
     echo "🔒 Running security audit..."
-    if node "$ACTION_PATH/scripts/audit-package.js" > "$TEMP_OUTPUT" 2>&1; then
+    if bash "$ACTION_PATH/scripts/run-js-file.sh" "$ACTION_PATH/scripts/audit-package.js" > "$TEMP_OUTPUT" 2>&1; then
       cat "$TEMP_OUTPUT"
       echo "✅ Security audit completed"
     else

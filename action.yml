@@ -66,12 +66,12 @@ inputs:
   
   # Security Configuration
   audit-enabled:
-    description: 'Enable npm audit security scanning'
+    description: 'Enable package-manager-aware security scanning (npm audit or bun audit)'
     required: false
     default: 'true'
   
   audit-level:
-    description: 'Minimum severity level for npm audit'
+    description: 'Minimum severity level for package-manager-aware security scanning'
     required: false
     default: 'high'
   
@@ -363,7 +363,7 @@ runs:
       if: inputs.monorepo == 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
-        node ${{ github.action_path }}/scripts/pr-comment.js
+        bash ${{ github.action_path }}/scripts/run-js-file.sh ${{ github.action_path }}/scripts/pr-comment.js
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_CONTEXT: ${{ toJson(github) }}
@@ -377,6 +377,7 @@ runs:
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         AUDIT_ENABLED: ${{ inputs.audit-enabled }}
         PR_COMMENT_TEMPLATE: ${{ inputs.pr-comment-template }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
     
     # =============================================================================
     # SINGLE PACKAGE MODE
@@ -439,11 +440,12 @@ runs:
       if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.audit-enabled == 'true'
       shell: bash
       run: |
-        node ${{ github.action_path }}/scripts/audit-package.js
+        bash ${{ github.action_path }}/scripts/run-js-file.sh ${{ github.action_path }}/scripts/audit-package.js
       env:
         AUDIT_LEVEL: ${{ inputs.audit-level }}
         FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
         PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
     
     - name: Generate Outputs
       id: generate-outputs
@@ -466,7 +468,7 @@ runs:
       if: inputs.monorepo != 'true' && steps.commit-gate.outputs.should-build != 'false' && inputs.pr-comment-enabled == 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
-        node ${{ github.action_path }}/scripts/pr-comment.js
+        bash ${{ github.action_path }}/scripts/run-js-file.sh ${{ github.action_path }}/scripts/pr-comment.js
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_CONTEXT: ${{ toJson(github) }}
@@ -482,6 +484,7 @@ runs:
         PR_COMMENT_TEMPLATE: ${{ inputs.pr-comment-template }}
         NPM_PUBLISHED: ${{ steps.publish.outputs.npm-published }}
         GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
 
 branding:
   icon: 'package'

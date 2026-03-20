@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * NPM Security Audit Script
- * Runs npm audit and parses results for GitHub Actions
+ * Security Audit Script
+ * Runs npm audit or bun audit and parses results for GitHub Actions
  */
 
 const { execSync } = require('child_process');
@@ -12,17 +12,97 @@ const path = require('path');
 const AUDIT_LEVEL = process.env.AUDIT_LEVEL || 'high';
 const FAIL_ON_AUDIT = process.env.FAIL_ON_AUDIT === 'true';
 const PACKAGE_PATH = process.env.PACKAGE_PATH || './package.json';
+const PACKAGE_MANAGER = process.env.PACKAGE_MANAGER || 'auto';
 const GITHUB_OUTPUT = process.env.GITHUB_OUTPUT || '';
 
 console.log('🔒 Running security audit...');
 console.log(`  Audit Level: ${AUDIT_LEVEL}`);
 console.log(`  Fail on Audit: ${FAIL_ON_AUDIT}`);
 
+const initialCwd = process.cwd();
+
 // Change to package directory
 const packageDir = path.dirname(PACKAGE_PATH);
 if (packageDir !== '.') {
   process.chdir(packageDir);
 }
+
+const workspaceRoot = process.env.WORKSPACE_ROOT || process.env.GITHUB_WORKSPACE || initialCwd;
+
+function hasLockfile(filename) {
+  return fs.existsSync(path.join(process.cwd(), filename)) || fs.existsSync(path.join(workspaceRoot, filename));
+}
+
+function detectAuditTool() {
+  if (PACKAGE_MANAGER && PACKAGE_MANAGER !== 'auto') {
+    return PACKAGE_MANAGER === 'bun' ? 'bun' : 'npm';
+  }
+
+  if (hasLockfile('bun.lockb') || hasLockfile('bun.lock')) {
+    return 'bun';
+  }
+
+  return 'npm';
+}
+
+function incrementSeverity(counts, severity) {
+  if (!severity || typeof severity !== 'string') {
+    return;
+  }
+
+  const normalized = severity.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(counts, normalized)) {
+    counts[normalized] += 1;
+  } else if (normalized === 'medium') {
+    counts.moderate += 1;
+  }
+}
+
+function applyMetadataVulnerabilities(target, vulnerabilities) {
+  target.critical = vulnerabilities.critical || 0;
+  target.high = vulnerabilities.high || 0;
+  target.moderate = vulnerabilities.moderate || vulnerabilities.medium || 0;
+  target.low = vulnerabilities.low || 0;
+  target.info = vulnerabilities.info || 0;
+}
+
+function summarizeAuditData(auditData) {
+  const counts = {
+    critical: 0,
+    high: 0,
+    moderate: 0,
+    low: 0,
+    info: 0
+  };
+
+  if (auditData?.metadata?.vulnerabilities) {
+    applyMetadataVulnerabilities(counts, auditData.metadata.vulnerabilities);
+  } else if (auditData?.vulnerabilities && typeof auditData.vulnerabilities === 'object') {
+    const vulnerabilities = auditData.vulnerabilities;
+
+    const looksLikeCounts = ['critical', 'high', 'moderate', 'medium', 'low', 'info']
+      .some((key) => typeof vulnerabilities[key] === 'number');
+
+    if (looksLikeCounts) {
+      applyMetadataVulnerabilities(counts, vulnerabilities);
+    } else {
+      Object.values(vulnerabilities).forEach((vuln) => incrementSeverity(counts, vuln?.severity));
+    }
+  } else if (auditData?.advisories && typeof auditData.advisories === 'object') {
+    Object.values(auditData.advisories).forEach((advisory) => incrementSeverity(counts, advisory?.severity));
+  } else if (Array.isArray(auditData)) {
+    auditData.forEach((item) => incrementSeverity(counts, item?.severity));
+  } else if (Array.isArray(auditData?.issues)) {
+    auditData.issues.forEach((item) => incrementSeverity(counts, item?.severity));
+  }
+
+  return counts;
+}
+
+const auditTool = detectAuditTool();
+const auditCommand = auditTool === 'bun' ? 'bun audit --json' : 'npm audit --json';
+
+console.log(`  Audit Tool: ${auditTool}`);
 
 let auditResults = {
   completed: true,
@@ -35,37 +115,35 @@ let auditResults = {
 };
 
 try {
-  // Run npm audit with JSON output
-  console.log('📊 Running npm audit...');
+  // Run package-manager-aware audit with JSON output
+  console.log(`📊 Running ${auditTool} audit...`);
   
   let auditOutput;
   try {
-    auditOutput = execSync('npm audit --json', { 
+    auditOutput = execSync(auditCommand, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
   } catch (error) {
-    // npm audit returns non-zero exit code when vulnerabilities are found
+    // npm/bun audit return non-zero exit code when vulnerabilities are found
     auditOutput = error.stdout || '{}';
   }
   
   const auditData = JSON.parse(auditOutput);
   
   // Parse vulnerability counts
-  if (auditData.metadata && auditData.metadata.vulnerabilities) {
-    const vulns = auditData.metadata.vulnerabilities;
-    auditResults.critical = vulns.critical || 0;
-    auditResults.high = vulns.high || 0;
-    auditResults.moderate = vulns.moderate || 0;
-    auditResults.low = vulns.low || 0;
-    auditResults.info = vulns.info || 0;
-    auditResults.totalVulnerabilities = 
-      auditResults.critical + 
-      auditResults.high + 
-      auditResults.moderate + 
-      auditResults.low + 
-      auditResults.info;
-  }
+  const summary = summarizeAuditData(auditData);
+  auditResults.critical = summary.critical;
+  auditResults.high = summary.high;
+  auditResults.moderate = summary.moderate;
+  auditResults.low = summary.low;
+  auditResults.info = summary.info;
+  auditResults.totalVulnerabilities =
+    auditResults.critical +
+    auditResults.high +
+    auditResults.moderate +
+    auditResults.low +
+    auditResults.info;
   
   // Write audit summary
   const summaryPath = path.join(process.cwd(), 'audit-summary.json');
