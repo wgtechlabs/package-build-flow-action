@@ -273,7 +273,7 @@ if [ "$DEPENDENCY_ORDER" = "true" ] && [ "$WORKSPACE_DETECTION" = "true" ] && [ 
   
   export PACKAGES_JSON="$PACKAGES_FOR_ORDERING"
   
-  if node "$ACTION_PATH/scripts/resolve-dependency-order.js" > "$DEP_ORDER_OUTPUT" 2>&1; then
+  if bash "$ACTION_PATH/scripts/run-js-file.sh" "$ACTION_PATH/scripts/resolve-dependency-order.js" > "$DEP_ORDER_OUTPUT" 2>&1; then
     cat "$DEP_ORDER_OUTPUT"
     
     # Read ordered packages from output

@@ -177,7 +177,7 @@ Tag: patch
 
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
-| `audit-enabled` | Enable npm audit security scanning | `true` | No |
+| `audit-enabled` | Enable package-manager-aware security scanning (`npm audit` or `bun audit`) | `true` | No |
 | `audit-level` | Minimum severity level: `critical`, `high`, `moderate`, `low` | `high` | No |
 | `fail-on-audit` | Fail build if vulnerabilities found | `false` | No |
 
@@ -204,7 +204,7 @@ Tag: patch
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
 | `changed-only` | Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only). Uses git diff to detect changes. | `true` | No |
-| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Set to `false` to use discovery order. | `true` | No |
+| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Works with Bun-only monorepos through the same runtime-aware helper execution used elsewhere in the action. Set to `false` to use discovery order. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
@@ -304,7 +304,7 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected.
+The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so Bun-only workflows do not need `actions/setup-node`.
 
 ##### pnpm
 
