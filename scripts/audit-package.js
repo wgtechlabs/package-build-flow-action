@@ -54,6 +54,7 @@ function incrementSeverity(counts, severity) {
   if (Object.prototype.hasOwnProperty.call(counts, normalized)) {
     counts[normalized] += 1;
   } else if (normalized === 'medium') {
+    // Bun/npm audit payloads may use "medium" while the action output contract uses "moderate".
     counts.moderate += 1;
   }
 }
@@ -80,6 +81,7 @@ function summarizeAuditData(auditData) {
   } else if (auditData?.vulnerabilities && typeof auditData.vulnerabilities === 'object') {
     const vulnerabilities = auditData.vulnerabilities;
 
+    // Some audit formats expose numeric severity totals here, while others expose per-package entries.
     const looksLikeCounts = ['critical', 'high', 'moderate', 'medium', 'low', 'info']
       .some((key) => typeof vulnerabilities[key] === 'number');
 

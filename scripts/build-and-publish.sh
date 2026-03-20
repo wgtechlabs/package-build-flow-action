@@ -48,6 +48,12 @@ run_install_in_dir() {
   fi
 }
 
+should_install_from_workspace_root() {
+  [ "$PKG_MANAGER" = "bun" ] &&
+    { [ -f "$WORKSPACE_ROOT/bun.lockb" ] || [ -f "$WORKSPACE_ROOT/bun.lock" ]; } &&
+    { [ ! -f "$PACKAGE_DIR/bun.lockb" ] && [ ! -f "$PACKAGE_DIR/bun.lock" ]; }
+}
+
 # Ensure .npmrc is available in the package directory
 # (configure-registries.sh writes it to the workspace root)
 if [ "$PWD" != "$WORKSPACE_ROOT" ] && [ -f "$WORKSPACE_ROOT/.npmrc" ]; then
@@ -144,7 +150,7 @@ echo "📦 Using package manager: $PKG_MANAGER"
 # Install dependencies
 echo "📥 Installing dependencies..."
 INSTALL_DIR="$PACKAGE_DIR"
-if [ "$PKG_MANAGER" = "bun" ] && { [ -f "$WORKSPACE_ROOT/bun.lockb" ] || [ -f "$WORKSPACE_ROOT/bun.lock" ]; } && { [ ! -f "$PACKAGE_DIR/bun.lockb" ] && [ ! -f "$PACKAGE_DIR/bun.lock" ]; }; then
+if should_install_from_workspace_root; then
   INSTALL_DIR="$WORKSPACE_ROOT"
   echo "📍 Running Bun install from workspace root: $INSTALL_DIR"
 fi
