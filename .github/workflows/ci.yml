@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  single-package-bun:
+    name: Single Package Bun
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Prepare single-package fixture
+        shell: bash
+        run: |
+          mkdir -p ci-fixtures/single
+          cat > ci-fixtures/single/package.json <<'EOF'
+          {
+            "name": "single-bun-fixture",
+            "version": "0.1.0",
+            "scripts": {
+              "build": "echo single-build",
+              "test": "echo single-test"
+            }
+          }
+          EOF
+
+          pushd ci-fixtures/single >/dev/null
+          bun install
+          popd >/dev/null
+
+      - name: Block Node fallback for Bun validation
+        shell: bash
+        run: |
+          mkdir -p ci-bin
+          cat > ci-bin/node <<'EOF'
+          #!/bin/sh
+          echo "node should not be used in Bun CI validation" >&2
+          exit 1
+          EOF
+          chmod +x ci-bin/node
+          echo "$PWD/ci-bin" >> "$GITHUB_PATH"
+
+      - name: Run action against single-package fixture
+        id: single
+        uses: ./
+        with:
+          package-path: ./ci-fixtures/single/package.json
+          package-manager: bun
+          registry: npm
+          npm-token: ci-dry-run-token
+          publish-enabled: 'true'
+          dry-run: 'true'
+          audit-enabled: 'true'
+          pr-comment-enabled: 'false'
+
+      - name: Assert single-package outputs
+        shell: bash
+        run: |
+          test "${{ steps.single.outputs.build-skipped }}" = "false"
+          test -n "${{ steps.single.outputs.package-version }}"
+          test -n "${{ steps.single.outputs.build-flow-type }}"
+          test "${{ steps.single.outputs.audit-completed }}" = "true"
+          test "${{ steps.single.outputs.npm-published }}" = "dry-run"
+
+  monorepo-bun:
+    name: Monorepo Bun
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Prepare monorepo fixture
+        shell: bash
+        run: |
+          mkdir -p ci-fixtures/monorepo/packages/pkg-a
+          mkdir -p ci-fixtures/monorepo/packages/pkg-b
+
+          cat > ci-fixtures/monorepo/package.json <<'EOF'
+          {
+            "name": "bun-monorepo-fixture",
+            "private": true,
+            "workspaces": [
+              "packages/*"
+            ]
+          }
+          EOF
+
+          cat > ci-fixtures/monorepo/packages/pkg-a/package.json <<'EOF'
+          {
+            "name": "@ci/pkg-a",
+            "version": "0.1.0",
+            "scripts": {
+              "build": "echo pkg-a-build",
+              "test": "echo pkg-a-test"
+            }
+          }
+          EOF
+
+          cat > ci-fixtures/monorepo/packages/pkg-b/package.json <<'EOF'
+          {
+            "name": "@ci/pkg-b",
+            "version": "0.1.0",
+            "dependencies": {
+              "@ci/pkg-a": "workspace:*"
+            },
+            "scripts": {
+              "build": "echo pkg-b-build",
+              "test": "echo pkg-b-test"
+            }
+          }
+          EOF
+
+          pushd ci-fixtures/monorepo >/dev/null
+          bun install
+          popd >/dev/null
+
+      - name: Block Node fallback for Bun validation
+        shell: bash
+        run: |
+          mkdir -p ci-bin
+          cat > ci-bin/node <<'EOF'
+          #!/bin/sh
+          echo "node should not be used in Bun CI validation" >&2
+          exit 1
+          EOF
+          chmod +x ci-bin/node
+          echo "$PWD/ci-bin" >> "$GITHUB_PATH"
+
+      - name: Run action against monorepo fixture
+        id: monorepo
+        uses: ./
+        with:
+          monorepo: 'true'
+          package-path: ./ci-fixtures/monorepo/package.json
+          package-manager: bun
+          registry: npm
+          npm-token: ci-dry-run-token
+          publish-enabled: 'true'
+          dry-run: 'true'
+          audit-enabled: 'true'
+          pr-comment-enabled: 'false'
+          changed-only: 'false'
+          dependency-order: 'true'
+
+      - name: Assert monorepo outputs
+        shell: bash
+        env:
+          BUILD_RESULTS: ${{ steps.monorepo.outputs.build-results }}
+          TOTAL_PACKAGES: ${{ steps.monorepo.outputs.total-packages }}
+          PACKAGES_FAILED: ${{ steps.monorepo.outputs.packages-failed }}
+        run: |
+          test "$TOTAL_PACKAGES" = "2"
+          test -z "$PACKAGES_FAILED"
+          test "$(echo "$BUILD_RESULTS" | jq -r 'length')" = "2"
+          test "$(echo "$BUILD_RESULTS" | jq -r '.[0].name')" = "@ci/pkg-a"
+          test "$(echo "$BUILD_RESULTS" | jq -r '.[1].name')" = "@ci/pkg-b"
+          test "$(echo "$BUILD_RESULTS" | jq -r '[.[].result] | all(. == "success")')" = "true"
+          test "$(echo "$BUILD_RESULTS" | jq -r '[.[]."npm-published"] | all(. == "dry-run")')" = "true"
