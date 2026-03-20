@@ -268,23 +268,10 @@ runs:
       id: bot-gate
       shell: bash
       run: |
-        ACTOR="${{ github.actor }}"
-        BOT_DETECTION="${{ inputs.bot-detection }}"
-
-        if [ "$BOT_DETECTION" != "true" ]; then
-          echo "is-bot=false" >> "$GITHUB_OUTPUT"
-          echo "ℹ️  Bot detection is disabled"
-          exit 0
-        fi
-
-        if [[ "$ACTOR" == *"[bot]"* ]]; then
-          echo "is-bot=true" >> "$GITHUB_OUTPUT"
-          echo "build-skip-reason=Bot actor: ${ACTOR}" >> "$GITHUB_OUTPUT"
-          echo "⚠️  Bot actor detected (${ACTOR}) — running in validation-only mode (no publish)"
-        else
-          echo "is-bot=false" >> "$GITHUB_OUTPUT"
-          echo "ℹ️  Actor '${ACTOR}' is not a bot"
-        fi
+        bash ${{ github.action_path }}/scripts/detect-bot-actor.sh
+      env:
+        ACTOR: ${{ github.actor }}
+        BOT_DETECTION: ${{ inputs.bot-detection }}
 
     - name: Commit Convention Gate
       id: commit-gate

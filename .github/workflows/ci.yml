@@ -12,6 +12,46 @@ permissions:
   contents: read
 
 jobs:
+  bot-detection-script:
+    name: Bot Detection Script
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Assert bot detection script behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_case() {
+            local actor="$1"
+            local bot_detection="$2"
+            local expected_is_bot="$3"
+            local expected_reason="$4"
+            local output_file
+
+            output_file=$(mktemp)
+            ACTOR="$actor" BOT_DETECTION="$bot_detection" GITHUB_OUTPUT="$output_file" bash ./scripts/detect-bot-actor.sh
+
+            test "$(grep '^is-bot=' "$output_file" | cut -d= -f2)" = "$expected_is_bot"
+
+            if [ -n "$expected_reason" ]; then
+              test "$(grep '^build-skip-reason=' "$output_file" | cut -d= -f2-)" = "$expected_reason"
+            else
+              ! grep -q '^build-skip-reason=' "$output_file"
+            fi
+
+            rm -f "$output_file"
+          }
+
+          run_case "dependabot[bot]" "true" "true" "Bot actor: dependabot[bot]"
+          run_case "renovate[bot]" "true" "true" "Bot actor: renovate[bot]"
+          run_case "github-actions[bot]" "true" "true" "Bot actor: github-actions[bot]"
+          run_case "warengonzaga" "true" "false" ""
+          run_case "dependabot[bot]" "false" "false" ""
+
   single-package-bun:
     name: Single Package Bun
     runs-on: ubuntu-latest
