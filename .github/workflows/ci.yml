@@ -33,7 +33,7 @@ jobs:
           mkdir -p ci-fixtures/single
           cat > ci-fixtures/single/package.json <<'EOF'
           {
-            "name": "single-bun-fixture",
+            "name": "@wgtechlabs/single-bun-fixture",
             "version": "0.1.0",
             "scripts": {
               "build": "echo single-build",
@@ -64,8 +64,8 @@ jobs:
         with:
           package-path: ./ci-fixtures/single/package.json
           package-manager: bun
-          registry: npm
-          npm-token: ci-dry-run-token
+          registry: github
+          github-token: ${{ github.token }}
           publish-enabled: 'true'
           dry-run: 'true'
           audit-enabled: 'true'
@@ -78,7 +78,7 @@ jobs:
           test -n "${{ steps.single.outputs.package-version }}"
           test -n "${{ steps.single.outputs.build-flow-type }}"
           test "${{ steps.single.outputs.audit-completed }}" = "true"
-          test "${{ steps.single.outputs.npm-published }}" = "dry-run"
+          test "${{ steps.single.outputs.github-published }}" = "dry-run"
 
   monorepo-bun:
     name: Monorepo Bun
@@ -113,7 +113,7 @@ jobs:
 
           cat > ci-fixtures/monorepo/packages/pkg-a/package.json <<'EOF'
           {
-            "name": "@ci/pkg-a",
+            "name": "@wgtechlabs/pkg-a",
             "version": "0.1.0",
             "scripts": {
               "build": "echo pkg-a-build",
@@ -124,10 +124,10 @@ jobs:
 
           cat > ci-fixtures/monorepo/packages/pkg-b/package.json <<'EOF'
           {
-            "name": "@ci/pkg-b",
+            "name": "@wgtechlabs/pkg-b",
             "version": "0.1.0",
             "dependencies": {
-              "@ci/pkg-a": "workspace:*"
+              "@wgtechlabs/pkg-a": "workspace:*"
             },
             "scripts": {
               "build": "echo pkg-b-build",
@@ -159,8 +159,8 @@ jobs:
           monorepo: 'true'
           package-path: ./ci-fixtures/monorepo/package.json
           package-manager: bun
-          registry: npm
-          npm-token: ci-dry-run-token
+          registry: github
+          github-token: ${{ github.token }}
           publish-enabled: 'true'
           dry-run: 'true'
           audit-enabled: 'true'
@@ -178,7 +178,7 @@ jobs:
           test "$TOTAL_PACKAGES" = "2"
           test -z "$PACKAGES_FAILED"
           test "$(echo "$BUILD_RESULTS" | jq -r 'length')" = "2"
-          test "$(echo "$BUILD_RESULTS" | jq -r '.[0].name')" = "@ci/pkg-a"
-          test "$(echo "$BUILD_RESULTS" | jq -r '.[1].name')" = "@ci/pkg-b"
+          test "$(echo "$BUILD_RESULTS" | jq -r '.[0].name')" = "@wgtechlabs/pkg-a"
+          test "$(echo "$BUILD_RESULTS" | jq -r '.[1].name')" = "@wgtechlabs/pkg-b"
           test "$(echo "$BUILD_RESULTS" | jq -r '[.[].result] | all(. == "success")')" = "true"
-          test "$(echo "$BUILD_RESULTS" | jq -r '[.[]."npm-published"] | all(. == "dry-run")')" = "true"
+          test "$(echo "$BUILD_RESULTS" | jq -r '[.[]."github-published"] | all(. == "dry-run")')" = "true"
