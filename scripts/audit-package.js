@@ -56,6 +56,8 @@ function incrementSeverity(counts, severity) {
   } else if (normalized === 'medium') {
     // Bun/npm audit payloads may use "medium" while the action output contract uses "moderate".
     counts.moderate += 1;
+  } else {
+    console.warn(`⚠️  Unrecognized audit severity '${severity}', ignoring`);
   }
 }
 
