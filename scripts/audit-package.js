@@ -134,8 +134,20 @@ try {
       stdio: ['pipe', 'pipe', 'pipe']
     });
   } catch (error) {
-    // npm/bun audit return non-zero exit code when vulnerabilities are found
-    auditOutput = error.stdout || '{}';
+    // npm/bun audit return non-zero exit code when vulnerabilities are found,
+    // but in that case they still print JSON to stdout. If there is no stdout,
+    // treat this as a failure to run the audit rather than "no vulnerabilities".
+    if (error && typeof error.stdout === 'string' && error.stdout.trim().length > 0) {
+      auditOutput = error.stdout;
+    } else {
+      throw new Error(
+        `Failed to run ${auditTool} audit: ${error && error.message ? error.message : 'no output received'}`
+      );
+    }
+  }
+
+  if (!auditOutput || auditOutput.toString().trim().length === 0) {
+    throw new Error(`Failed to parse ${auditTool} audit output: no data received`);
   }
   
   const auditData = JSON.parse(auditOutput);

@@ -45,8 +45,14 @@ detect_package_manager() {
 DETECTED_MANAGER="$(detect_package_manager)"
 RUNTIME=""
 
-if [ "$DETECTED_MANAGER" = "bun" ] && command -v bun >/dev/null 2>&1; then
-  RUNTIME="bun"
+if [ "$DETECTED_MANAGER" = "bun" ]; then
+  if command -v bun >/dev/null 2>&1; then
+    RUNTIME="bun"
+  else
+    echo "❌ Error: Bun was selected or auto-detected as the package manager, but 'bun' is not available on PATH."
+    echo "   Please install Bun (for example by using oven-sh/setup-bun in your workflow) and try again."
+    exit 1
+  fi
 elif command -v node >/dev/null 2>&1; then
   RUNTIME="node"
 elif command -v bun >/dev/null 2>&1; then
