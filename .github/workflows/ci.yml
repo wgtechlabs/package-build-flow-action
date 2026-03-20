@@ -82,6 +82,82 @@ jobs:
           test "${{ steps.single.outputs.audit-completed }}" = "true"
           test "${{ steps.single.outputs.github-published }}" = "false"
 
+  single-package-bot-validation:
+    name: Single Package Bot Validation
+    if: github.event_name == 'pull_request' && endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Prepare bot-validation fixture
+        shell: bash
+        run: |
+          mkdir -p ci-fixtures/bot-single
+          cat > ci-fixtures/bot-single/package.json <<'EOF'
+          {
+            "name": "@wgtechlabs/bot-bun-fixture",
+            "version": "0.1.0",
+            "dependencies": {
+              "is-number": "7.0.0"
+            },
+            "scripts": {
+              "build": "echo bot-build",
+              "test": "echo bot-test"
+            }
+          }
+          EOF
+
+          pushd ci-fixtures/bot-single >/dev/null
+          bun install
+          popd >/dev/null
+
+      - name: Block Node fallback for Bun validation
+        shell: bash
+        run: |
+          mkdir -p ci-bin
+          cat > ci-bin/node <<'EOF'
+          #!/bin/sh
+          echo "node should not be used in Bun CI validation" >&2
+          exit 1
+          EOF
+          chmod +x ci-bin/node
+          echo "$PWD/ci-bin" >> "$GITHUB_PATH"
+
+      - name: Run action against bot fixture
+        id: bot-single
+        uses: ./
+        with:
+          package-path: ./ci-fixtures/bot-single/package.json
+          package-manager: bun
+          registry: github
+          github-token: ${{ github.token }}
+          publish-enabled: 'true'
+          dry-run: 'false'
+          audit-enabled: 'true'
+          pr-comment-enabled: 'false'
+
+      - name: Assert bot validation outputs
+        shell: bash
+        run: |
+          test "${{ steps.bot-single.outputs.bot-detected }}" = "true"
+          test "${{ steps.bot-single.outputs.build-skipped }}" = "false"
+          test -n "${{ steps.bot-single.outputs.package-version }}"
+          test -n "${{ steps.bot-single.outputs.build-flow-type }}"
+          test "${{ steps.bot-single.outputs.audit-completed }}" = "true"
+          test "${{ steps.bot-single.outputs.github-published }}" = "dry-run"
+
   monorepo-bun:
     name: Monorepo Bun
     runs-on: ubuntu-latest

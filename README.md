@@ -17,6 +17,7 @@ Automated JavaScript package versioning, building, and publishing with intellige
 - 🔒 **Security Scanning**: Built-in package-manager-aware audit integration
 - 💬 **PR Comments**: Automatic installation instructions in pull requests
 - 🎯 **Dist-tag Management**: Non-latest tags for pre-releases to keep production clean
+- 🤖 **Bot-Safe Validation**: Automatically falls back to validation-only mode for bot PRs
 - 🚀 **Zero Configuration**: Works out of the box with sensible defaults
 
 ## Quick Start
@@ -196,6 +197,12 @@ Tag: patch
 | `dry-run` | Perform dry run without publishing | `false` | No |
 | `access` | Package access level for scoped packages: `public` or `restricted` | `public` | No |
 
+### Bot Detection Configuration
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `bot-detection` | Auto-detect bot actors and switch to validation-only mode so build and audit still run while publish is forced to dry-run | `true` | No |
+
 ### Monorepo Configuration
 
 | Input | Description | Default | Required |
@@ -222,6 +229,7 @@ Tag: patch
 | `total-vulnerabilities` | Total vulnerabilities found (single-package mode) |
 | `critical-vulnerabilities` | Critical vulnerabilities count (single-package mode) |
 | `high-vulnerabilities` | High vulnerabilities count (single-package mode) |
+| `bot-detected` | Whether the current actor was detected as a bot and the run switched to validation-only mode |
 | `build-results` | JSON array of per-package build results (monorepo mode only) |
 | `discovered-packages` | JSON array of discovered packages with name, version, path, and dir (monorepo mode with workspace-detection only) |
 | `package-count` | Number of discovered publishable packages (monorepo mode with workspace-detection only) |
@@ -673,6 +681,36 @@ Test the action without publishing:
   with:
     dry-run: 'true'
     npm-token: ${{ secrets.NPM_TOKEN }}
+```
+
+### Bot Detection Fallback
+
+When `bot-detection: 'true'` (default), the action detects automation actors such as `dependabot[bot]`, `renovate[bot]`, and any actor that ends with `[bot]`.
+
+Instead of failing because publish secrets are unavailable, the action automatically switches to validation-only mode:
+
+- Build still runs
+- Security audit still runs
+- Publish is forced to dry-run
+- The `bot-detected` output is set to `true`
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    registry: 'github'
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    bot-detection: 'true'
+```
+
+Disable it only if you intentionally handle bot actors in your workflow logic:
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    registry: 'both'
+    npm-token: ${{ secrets.NPM_TOKEN }}
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    bot-detection: 'false'
 ```
 
 ### Monorepo Support
