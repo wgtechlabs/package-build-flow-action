@@ -35,6 +35,9 @@ jobs:
           {
             "name": "@wgtechlabs/single-bun-fixture",
             "version": "0.1.0",
+            "dependencies": {
+              "is-number": "7.0.0"
+            },
             "scripts": {
               "build": "echo single-build",
               "test": "echo single-test"
