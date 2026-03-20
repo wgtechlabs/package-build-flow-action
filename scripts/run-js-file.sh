@@ -49,7 +49,7 @@ if [ "$DETECTED_MANAGER" = "bun" ]; then
   if command -v bun >/dev/null 2>&1; then
     RUNTIME="bun"
   else
-    echo "❌ Error: Bun was selected or auto-detected as the package manager, but 'bun' is not available on PATH."
+    echo "❌ Error: Bun was selected or autodetected as the package manager, but 'bun' is not available on PATH."
     echo "   Please install Bun (for example by using oven-sh/setup-bun in your workflow) and try again."
     exit 1
   fi
