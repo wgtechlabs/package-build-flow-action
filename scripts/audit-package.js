@@ -80,10 +80,15 @@ function summarizeAuditData(auditData) {
     applyMetadataVulnerabilities(counts, auditData.metadata.vulnerabilities);
   } else if (auditData?.vulnerabilities && typeof auditData.vulnerabilities === 'object') {
     const vulnerabilities = auditData.vulnerabilities;
+    const severityKeys = ['critical', 'high', 'moderate', 'medium', 'low', 'info'];
+    const severityKeysPresent = severityKeys.filter((key) =>
+      Object.prototype.hasOwnProperty.call(vulnerabilities, key)
+    );
 
     // Some audit formats expose numeric severity totals here, while others expose per-package entries.
-    const looksLikeCounts = ['critical', 'high', 'moderate', 'medium', 'low', 'info']
-      .some((key) => typeof vulnerabilities[key] === 'number');
+    const looksLikeCounts =
+      severityKeysPresent.length > 0 &&
+      severityKeysPresent.every((key) => typeof vulnerabilities[key] === 'number');
 
     if (looksLikeCounts) {
       applyMetadataVulnerabilities(counts, vulnerabilities);

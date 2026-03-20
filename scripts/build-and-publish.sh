@@ -49,9 +49,19 @@ run_install_in_dir() {
 }
 
 should_install_from_workspace_root() {
-  [ "$PKG_MANAGER" = "bun" ] &&
-    { [ -f "$WORKSPACE_ROOT/bun.lockb" ] || [ -f "$WORKSPACE_ROOT/bun.lock" ]; } &&
-    { [ ! -f "$PACKAGE_DIR/bun.lockb" ] && [ ! -f "$PACKAGE_DIR/bun.lock" ]; }
+  if [ "$PKG_MANAGER" != "bun" ]; then
+    return 1
+  fi
+
+  if [ ! -f "$WORKSPACE_ROOT/bun.lockb" ] && [ ! -f "$WORKSPACE_ROOT/bun.lock" ]; then
+    return 1
+  fi
+
+  if [ -f "$PACKAGE_DIR/bun.lockb" ] || [ -f "$PACKAGE_DIR/bun.lock" ]; then
+    return 1
+  fi
+
+  return 0
 }
 
 # Ensure .npmrc is available in the package directory
