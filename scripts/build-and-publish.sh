@@ -178,7 +178,7 @@ elif [ "$PKG_MANAGER" = "yarn" ]; then
   else
     run_install_in_dir "$INSTALL_DIR" yarn install --frozen-lockfile
   fi
-elif has_lockfile "package-lock.json"; then
+elif [ -f "$INSTALL_DIR/package-lock.json" ]; then
   run_install_in_dir "$INSTALL_DIR" npm ci
 else
   run_install_in_dir "$INSTALL_DIR" npm install

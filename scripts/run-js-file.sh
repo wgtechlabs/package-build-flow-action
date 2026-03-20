@@ -15,7 +15,17 @@ fi
 
 CURRENT_DIR="$PWD"
 WORKSPACE_DIR="${WORKSPACE_ROOT:-${GITHUB_WORKSPACE:-$CURRENT_DIR}}"
-SELECTED_MANAGER="${PACKAGE_MANAGER:-auto}"
+RAW_SELECTED_MANAGER="${PACKAGE_MANAGER:-auto}"
+SELECTED_MANAGER="$(printf '%s' "$RAW_SELECTED_MANAGER" | tr '[:upper:]' '[:lower:]')"
+
+if [ -z "$SELECTED_MANAGER" ]; then
+  SELECTED_MANAGER="auto"
+fi
+
+if [ "$SELECTED_MANAGER" != "auto" ] && [ "$SELECTED_MANAGER" != "npm" ] && [ "$SELECTED_MANAGER" != "yarn" ] && [ "$SELECTED_MANAGER" != "pnpm" ] && [ "$SELECTED_MANAGER" != "bun" ]; then
+  echo "❌ Error: Invalid package-manager value '$RAW_SELECTED_MANAGER'. Must be 'auto', 'npm', 'yarn', 'pnpm', or 'bun'"
+  exit 1
+fi
 
 has_lockfile() {
   local dir="$1"
@@ -24,7 +34,7 @@ has_lockfile() {
 }
 
 detect_package_manager() {
-  if [ "$SELECTED_MANAGER" != "auto" ] && [ -n "$SELECTED_MANAGER" ]; then
+  if [ "$SELECTED_MANAGER" != "auto" ]; then
     echo "$SELECTED_MANAGER"
     return
   fi
