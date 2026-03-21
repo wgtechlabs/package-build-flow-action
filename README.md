@@ -22,6 +22,9 @@ Automated JavaScript package versioning, building, and publishing with intellige
 
 ## Quick Start
 
+> [!NOTE]
+> The current recommended major version is `v2`. Existing `v1` workflows continue to work, but new setups should use `wgtechlabs/package-build-flow-action@v2`.
+
 ### Basic Usage
 
 ```yaml
@@ -44,7 +47,7 @@ jobs:
         with:
           node-version: '20'
       
-      - uses: wgtechlabs/package-build-flow-action@v1
+      - uses: wgtechlabs/package-build-flow-action@v2
         with:
           npm-token: ${{ secrets.NPM_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -65,6 +68,8 @@ The action automatically detects the build flow based on GitHub context:
 | **patch** | PR → main (not from dev) | `{base}-patch.{sha}` | `patch` | Hotfix pre-release for testing |
 | **staging** | Push to main | `{base}-staging.{sha}` | `staging` | Staging version for final validation before release |
 | **wip** | Other branches | `{base}-wip.{sha}` | `wip` | Experimental build from feature branch |
+
+When `commit-convention-enabled: 'true'` blocks a build, the `build-flow-type` output is set to `skip` and `build-skipped` becomes `true`.
 
 ### Flow Examples
 
@@ -172,7 +177,16 @@ Tag: patch
 | `package-path` | Path to package.json | `./package.json` | No |
 | `build-script` | NPM script to run before publishing | `build` | No |
 | `package-manager` | Package manager to use: `npm`, `yarn`, `pnpm`, `bun`, or `auto` (auto-detects from lockfile) | `auto` | No |
-| `version-prefix` | Prefix for version tags | - | No |
+| `version-prefix` | Accepted for backward compatibility but ignored at runtime because npm package versions must remain valid SemVer | - | No |
+
+### Commit Convention Gate Configuration
+
+| Input | Description | Default | Required |
+|-------|-------------|---------|----------|
+| `commit-convention-enabled` | Enable smart build filtering based on commit message conventions | `false` | No |
+| `commit-convention` | Commit convention to parse: `clean-commit` or `conventional` | `clean-commit` | No |
+| `build-trigger-types` | Comma-separated commit types that should trigger builds. Leave empty to use convention-aware defaults. | - | No |
+| `build-skip-types` | Comma-separated commit types that should skip builds. Skip types take priority over trigger types. Leave empty to use convention-aware defaults. | - | No |
 
 ### Security Configuration
 
@@ -221,7 +235,7 @@ Tag: patch
 |--------|-------------|
 | `package-version` | Generated package version (single-package mode) |
 | `registry-urls` | Installation commands for each registry (single-package mode) |
-| `build-flow-type` | Detected flow type (pr, dev, patch, staging, wip) (single-package mode) |
+| `build-flow-type` | Detected flow type (`release`, `pr`, `dev`, `patch`, `staging`, `wip`, or `skip`). `skip` is returned when the commit convention gate blocks the build. |
 | `short-sha` | Short commit SHA (single-package mode) |
 | `npm-published` | Whether published to NPM (true/false) (single-package mode) |
 | `github-published` | Whether published to GitHub Packages (true/false) (single-package mode) |
@@ -231,10 +245,17 @@ Tag: patch
 | `high-vulnerabilities` | High vulnerabilities count (single-package mode) |
 | `bot-detected` | Whether the current actor was detected as a bot and the run switched to validation-only mode |
 | `build-results` | JSON array of per-package build results (monorepo mode only) |
-| `discovered-packages` | JSON array of discovered packages with name, version, path, and dir (monorepo mode with workspace-detection only) |
-| `package-count` | Number of discovered publishable packages (monorepo mode with workspace-detection only) |
+| `discovered-packages` | JSON array of discovered packages with name, version, path, and dir. Returns `[]` when workspace detection is not used. |
+| `package-count` | Number of discovered publishable packages. Returns `0` when workspace detection is not used. |
 | `changed-packages` | JSON array of packages with changes (monorepo mode with changed-only only) |
 | `changed-count` | Number of changed packages (monorepo mode with changed-only only) |
+| `packages-published` | Comma-separated list of successfully published package names (monorepo mode) |
+| `packages-failed` | Comma-separated list of failed package names (monorepo mode) |
+| `total-packages` | Total number of packages processed (monorepo mode) |
+| `changed-packages-count` | Number of changed packages processed in monorepo mode |
+| `commit-type` | Detected commit type from the commit message when the commit convention gate is enabled |
+| `build-skip-reason` | Reason the build was skipped by the commit convention gate |
+| `build-skipped` | Whether the commit convention gate fully skipped the build |
 
 ### Monorepo Build Results Format
 
@@ -285,7 +306,7 @@ This ensures lockfile consistency and preserves backward compatibility. The acti
 Explicitly specify the package manager:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     package-manager: 'pnpm'  # or 'npm', 'yarn', 'bun'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -305,7 +326,7 @@ steps:
     with:
       bun-version: latest
 
-  - uses: wgtechlabs/package-build-flow-action@v1
+  - uses: wgtechlabs/package-build-flow-action@v2
     with:
       package-manager: 'bun'  # or 'auto' to detect from bun.lockb or bun.lock
       npm-token: ${{ secrets.NPM_TOKEN }}
@@ -331,7 +352,7 @@ steps:
       node-version: '20'
       cache: 'pnpm'
 
-  - uses: wgtechlabs/package-build-flow-action@v1
+  - uses: wgtechlabs/package-build-flow-action@v2
     with:
       package-manager: 'pnpm'  # or 'auto' to detect from pnpm-lock.yaml
       npm-token: ${{ secrets.NPM_TOKEN }}
@@ -351,7 +372,7 @@ steps:
       node-version: '20'
       cache: 'yarn'
 
-  - uses: wgtechlabs/package-build-flow-action@v1
+  - uses: wgtechlabs/package-build-flow-action@v2
     with:
       package-manager: 'yarn'  # or 'auto' to detect from yarn.lock
       npm-token: ${{ secrets.NPM_TOKEN }}
@@ -367,7 +388,7 @@ steps:
 3. Configure the action:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'npm'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -380,7 +401,7 @@ When publishing scoped packages (e.g., `@org/package-name`) to NPM, the action d
 **Default Behavior (Public Access):**
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'npm'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -392,7 +413,7 @@ When publishing scoped packages (e.g., `@org/package-name`) to NPM, the action d
 If you have a paid NPM plan and want to publish private scoped packages:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'npm'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -441,7 +462,7 @@ This means **most users don't need to configure anything** - the action will aut
 For most cases, you don't need to provide `package-scope`:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'github'
     github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -453,7 +474,7 @@ For most cases, you don't need to provide `package-scope`:
 If you want to use a different scope than the repository owner:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'github'
     github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -465,7 +486,7 @@ If you want to use a different scope than the repository owner:
 Publish to both NPM and GitHub Packages. GitHub Packages will use auto-scoping if needed:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'both'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -476,7 +497,7 @@ Publish to both NPM and GitHub Packages. GitHub Packages will use auto-scoping i
 Or with custom scope:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     registry: 'both'
     npm-token: ${{ secrets.NPM_TOKEN }}
@@ -493,6 +514,8 @@ All versions follow Semantic Versioning (SemVer) format: `MAJOR.MINOR.PATCH[-pre
 - **Base Version**: Read from package.json
 - **Pre-release Suffix**: Automatically added based on flow type
 - **Dist-tags**: Used to hide pre-releases from `npm install` defaults
+
+`version-prefix` is still accepted as an input for backward compatibility, but it is ignored because prefixes like `v1.2.3` are not valid npm package versions.
 
 ### Dist-tag Strategy
 
@@ -522,7 +545,7 @@ npm install mypackage@latest
 The action includes built-in package-manager-aware security scanning:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     audit-enabled: 'true'
     audit-level: 'high'
@@ -550,7 +573,7 @@ Automatic PR comments include:
 Create a custom PR comment format:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     pr-comment-template: |
       ## Build Complete
@@ -598,7 +621,7 @@ jobs:
         with:
           node-version: '20'
       
-      - uses: wgtechlabs/package-build-flow-action@v1
+      - uses: wgtechlabs/package-build-flow-action@v2
         id: build
         with:
           # Registries
@@ -657,7 +680,7 @@ jobs:
           node-version: '20'
       
       # No manual version update needed - automatically uses release tag!
-      - uses: wgtechlabs/package-build-flow-action@v1
+      - uses: wgtechlabs/package-build-flow-action@v2
         with:
           registry: 'both'
           npm-token: ${{ secrets.NPM_TOKEN }}
@@ -677,11 +700,39 @@ jobs:
 Test the action without publishing:
 
 ```yaml
-- uses: wgtechlabs/package-build-flow-action@v1
+- uses: wgtechlabs/package-build-flow-action@v2
   with:
     dry-run: 'true'
     npm-token: ${{ secrets.NPM_TOKEN }}
 ```
+
+### Commit Convention Gate
+
+When enabled, the action inspects the PR title or latest commit subject and can skip the build entirely for commit types that are not build-relevant.
+
+```yaml
+- uses: wgtechlabs/package-build-flow-action@v2
+  with:
+    commit-convention-enabled: 'true'
+    commit-convention: 'clean-commit'
+    # Optional overrides:
+    # build-trigger-types: 'new,update,fix,security'
+    # build-skip-types: 'docs,test,release'
+```
+
+Default behavior:
+
+- `clean-commit` defaults to triggering on `new, feat, add, fix, bugfix, update, refactor, perf, security, remove, delete, setup, chore`
+- `clean-commit` defaults to skipping on `docs, test, release, style, ci, build`
+- `conventional` defaults to triggering on `feat, fix, perf, refactor, revert, security`
+- `conventional` defaults to skipping on `docs, test, style, ci, build, chore`
+
+When the gate skips a build:
+
+- `build-flow-type` is `skip`
+- `build-skipped` is `true`
+- `build-skip-reason` explains why the build did not run
+- `commit-type` contains the parsed commit type when one was detected
 
 ### Bot Detection Fallback
 

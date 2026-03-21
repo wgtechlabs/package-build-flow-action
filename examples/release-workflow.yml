@@ -23,7 +23,7 @@ jobs:
       
       - name: Build and Publish Release
         id: build
-        uses: wgtechlabs/package-build-flow-action@v1
+        uses: wgtechlabs/package-build-flow-action@v2
         with:
           # Publish to both registries
           registry: 'both'

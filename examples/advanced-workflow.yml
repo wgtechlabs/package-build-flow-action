@@ -27,7 +27,7 @@ jobs:
       
       - name: Build and Publish Package
         id: build
-        uses: wgtechlabs/package-build-flow-action@v1
+        uses: wgtechlabs/package-build-flow-action@v2
         with:
           # Registry Configuration
           registry: 'both'
@@ -44,7 +44,6 @@ jobs:
           # Package Configuration
           package-path: './package.json'
           build-script: 'build'
-          version-prefix: 'v'
           
           # Security Configuration
           audit-enabled: 'true'

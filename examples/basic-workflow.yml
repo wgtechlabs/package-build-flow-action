@@ -24,7 +24,7 @@ jobs:
           node-version: '20'
       
       - name: Build and Publish Package
-        uses: wgtechlabs/package-build-flow-action@v1
+        uses: wgtechlabs/package-build-flow-action@v2
         with:
           npm-token: ${{ secrets.NPM_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
