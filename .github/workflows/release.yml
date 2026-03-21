@@ -21,8 +21,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
+
+      - name: Align branch to triggering commit
+        run: git reset --hard ${{ github.event.workflow_run.head_sha }}
 
       - name: Create Release
         id: release
