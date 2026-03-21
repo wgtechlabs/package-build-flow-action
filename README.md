@@ -225,7 +225,7 @@ Tag: patch
 | `package-paths` | Comma-separated list of package.json paths (monorepo mode only). Takes priority over workspace-detection. Either this OR workspace-detection with valid workspaces field is required when monorepo is true. | - | Conditional* |
 | `workspace-detection` | Auto-detect workspaces from the package.json resolved from `package-path` (default `./package.json`). Reads its `workspaces` field and discovers all non-private packages. | `true` | No |
 | `changed-only` | Only build/publish packages that changed relative to the event-specific git diff base (monorepo mode only). Uses git diff to detect changes. | `true` | No |
-| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Works with Bun-only monorepos through the same runtime-aware helper execution used elsewhere in the action. Set to `false` to use discovery order. | `true` | No |
+| `dependency-order` | Build packages in dependency order using topological sort (monorepo mode only). Analyzes workspace dependencies and builds packages in the correct order. Works with Bun-only monorepos through the same runtime-aware helper execution used elsewhere in the action. Set to `false` to use discovery order. Has no effect when using explicit `package-paths` without workspace discovery metadata. | `true` | No |
 
 *Required when `monorepo: 'true'` AND (`workspace-detection: 'false'` OR no `workspaces` field in the package.json resolved from `package-path`)
 
@@ -441,11 +441,11 @@ GitHub Packages requires all packages to be scoped (e.g., `@owner/package-name`)
 
 #### 🎯 Automatic Scope Detection
 
-The action automatically scopes your package using this priority order:
+The action determines the GitHub Packages scope using this behavior:
 
-1. **Explicit scope from `package-scope` input** → Uses provided scope
-2. **Existing scope in package.json** → Uses scope from package name
-3. **Repository owner** → **Automatically uses `@{repository-owner}`** ✨
+1. **Existing scope in package.json** → Keeps the package's current scope
+2. **Explicit scope from `package-scope` input** → Uses the provided scope when the package name is unscoped
+3. **Repository owner** → **Automatically uses `@{repository-owner}`** when the package name is unscoped and `package-scope` is not provided ✨
 
 This means **most users don't need to configure anything** - the action will automatically scope packages using your repository owner!
 
@@ -632,7 +632,7 @@ jobs:
           
           # Branches
           main-branch: 'main'
-          dev-branch: 'develop'
+          dev-branch: 'dev'
           
           # Package
           package-path: './package.json'
@@ -726,6 +726,8 @@ Default behavior:
 - `clean-commit` defaults to skipping on `docs, test, release, style, ci, build`
 - `conventional` defaults to triggering on `feat, fix, perf, refactor, revert, security`
 - `conventional` defaults to skipping on `docs, test, style, ci, build, chore`
+
+For `clean-commit`, the action intentionally accepts a broader parser vocabulary than the canonical nine Clean Commit types so teams can support common aliases and legacy commit types in CI. The repository convention itself still defines the canonical types as `new`, `update`, `remove`, `security`, `setup`, `chore`, `test`, `docs`, and `release`.
 
 When the gate skips a build:
 
@@ -876,6 +878,9 @@ jobs:
           
           # List all packages (comma-separated)
           package-paths: 'core/package.json,plugins/plugin-discord/package.json,apps/cli/package.json'
+
+          # Note: dependency-order has no effect in this explicit package-paths mode
+          # unless workspace metadata is also available through workspace discovery.
           
           # Registry configuration
           registry: 'both'
