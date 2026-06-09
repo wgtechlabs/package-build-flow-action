@@ -25,7 +25,7 @@ resolve_path() {
 
 RESOLVED_PACKAGE_PATH="$(resolve_path "$PACKAGE_PATH_INPUT")"
 
-if [[ "$PACKAGE_PATH_INPUT" != /* ]] && [ ! -f "$RESOLVED_PACKAGE_PATH" ]; then
+if [[ "$RESOLVED_PACKAGE_PATH" == "$WORKSPACE_ROOT"/* ]] && [ ! -f "$RESOLVED_PACKAGE_PATH" ]; then
   CHECKOUT_REQUIRED="true"
 fi
 
@@ -46,7 +46,7 @@ if [ -n "$PACKAGE_PATHS_INPUT" ]; then
     resolved_path="$(resolve_path "$trimmed_path")"
     RESOLVED_PATH_ARRAY+=("$resolved_path")
 
-    if [[ "$trimmed_path" != /* ]] && [ ! -f "$resolved_path" ]; then
+    if [[ "$resolved_path" == "$WORKSPACE_ROOT"/* ]] && [ ! -f "$resolved_path" ]; then
       CHECKOUT_REQUIRED="true"
     fi
   done

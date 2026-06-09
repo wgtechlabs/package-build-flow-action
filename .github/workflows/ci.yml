@@ -95,6 +95,35 @@ jobs:
           audit-enabled: 'false'
           pr-comment-enabled: 'false'
 
+      - name: Assert checkout-required resolver detection
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_resolver() {
+            local pkg_path="$1"
+            local pkg_paths="${2:-}"
+            local out
+            out=$(mktemp)
+            PACKAGE_PATH="$pkg_path" PACKAGE_PATHS="$pkg_paths" \
+              GITHUB_WORKSPACE="$GITHUB_WORKSPACE" GITHUB_OUTPUT="$out" \
+              bash ./scripts/resolve-package-paths.sh > /dev/null
+            grep '^checkout-required=' "$out" | cut -d= -f2
+            rm -f "$out"
+          }
+
+          # relative path to missing file → checkout required
+          test "$(run_resolver "./nonexistent-package.json")" = "true"
+
+          # absolute path under GITHUB_WORKSPACE to missing file → checkout required
+          test "$(run_resolver "$GITHUB_WORKSPACE/nonexistent-package.json")" = "true"
+
+          # absolute path outside GITHUB_WORKSPACE → checkout not required
+          test "$(run_resolver "/tmp/nonexistent-package.json")" = "false"
+
+          # existing file (relative) → checkout not required
+          test "$(run_resolver "./package.json")" = "false"
+
       - name: Assert nested action outputs
         shell: bash
         run: |
