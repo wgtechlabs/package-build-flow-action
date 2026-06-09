@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Assert bot detection script behavior
         shell: bash
@@ -52,13 +52,92 @@ jobs:
           run_case "warengonzaga" "true" "false" ""
           run_case "dependabot[bot]" "false" "false" ""
 
+  package-path-resolution:
+    name: Package Path Resolution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare local action copy and consumer fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p local-action
+          rsync -a --exclude '.git' --exclude 'local-action' ./ ./local-action/
+
+          cat > package.json <<'EOF'
+          {
+           "name": "@wgtechlabs/path-resolution-fixture",
+           "version": "0.1.0",
+           "scripts": {
+             "build": "echo path-resolution-build",
+             "test": "echo path-resolution-test"
+           }
+          }
+          EOF
+
+      - name: Run action from nested action path
+        id: nested-action
+        uses: ./local-action
+        with:
+          package-manager: npm
+          registry: github
+          github-token: ${{ github.token }}
+          publish-enabled: 'false'
+          audit-enabled: 'false'
+          pr-comment-enabled: 'false'
+
+      - name: Assert checkout-required resolver detection
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_resolver() {
+            local pkg_path="$1"
+            local pkg_paths="${2:-}"
+            local out
+            out=$(mktemp)
+            PACKAGE_PATH="$pkg_path" PACKAGE_PATHS="$pkg_paths" \
+              GITHUB_WORKSPACE="$GITHUB_WORKSPACE" GITHUB_OUTPUT="$out" \
+              bash ./scripts/resolve-package-paths.sh > /dev/null
+            grep '^checkout-required=' "$out" | cut -d= -f2
+            rm -f "$out"
+          }
+
+          # relative path to missing file → checkout required
+          test "$(run_resolver "./nonexistent-package.json")" = "true"
+
+          # absolute path under GITHUB_WORKSPACE to missing file → checkout required
+          test "$(run_resolver "$GITHUB_WORKSPACE/nonexistent-package.json")" = "true"
+
+          # absolute path outside GITHUB_WORKSPACE → checkout not required
+          test "$(run_resolver "/tmp/nonexistent-package.json")" = "false"
+
+          # existing file (relative) → checkout not required
+          test "$(run_resolver "./package.json")" = "false"
+
+      - name: Assert nested action outputs
+        shell: bash
+        run: |
+          test "${{ steps.nested-action.outputs.build-skipped }}" = "false"
+          test -n "${{ steps.nested-action.outputs.package-version }}"
+          test "${{ steps.nested-action.outputs.github-published }}" = "false"
+
   single-package-bun:
     name: Single Package Bun
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
@@ -132,7 +211,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
@@ -204,7 +283,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
