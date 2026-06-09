@@ -8,19 +8,47 @@ PACKAGE_PATH_INPUT="${PACKAGE_PATH:-./package.json}"
 PACKAGE_PATHS_INPUT="${PACKAGE_PATHS:-}"
 CHECKOUT_REQUIRED="false"
 
+normalize_path() {
+  local absolute_path="$1"
+  local -a path_stack=()
+  local IFS='/'
+  read -ra path_parts <<< "$absolute_path"
+
+  for part in "${path_parts[@]}"; do
+    case "$part" in
+      ''|'.')
+        continue
+        ;;
+      '..')
+        if [ "${#path_stack[@]}" -gt 0 ]; then
+          unset 'path_stack[${#path_stack[@]}-1]'
+        fi
+        ;;
+      *)
+        path_stack+=("$part")
+        ;;
+    esac
+  done
+
+  printf '/%s\n' "$(IFS=/; echo "${path_stack[*]}")"
+}
+
 resolve_path() {
   local input_path="$1"
+  local candidate_path
 
   if [ -z "$input_path" ]; then
     return 0
   fi
 
   if [[ "$input_path" = /* ]]; then
-    printf '%s\n' "$input_path"
+    candidate_path="$input_path"
   else
     input_path="${input_path#./}"
-    printf '%s/%s\n' "$WORKSPACE_ROOT" "$input_path"
+    candidate_path="$WORKSPACE_ROOT/$input_path"
   fi
+
+  normalize_path "$candidate_path"
 }
 
 RESOLVED_PACKAGE_PATH="$(resolve_path "$PACKAGE_PATH_INPUT")"
