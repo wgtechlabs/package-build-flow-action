@@ -36,7 +36,8 @@ if [ -n "$PACKAGE_PATHS_INPUT" ]; then
 
   IFS=',' read -ra PACKAGE_PATH_ARRAY <<< "$PACKAGE_PATHS_INPUT"
   for raw_path in "${PACKAGE_PATH_ARRAY[@]}"; do
-    trimmed_path=$(echo "$raw_path" | xargs)
+    trimmed_path="${raw_path#"${raw_path%%[![:space:]]*}"}"
+    trimmed_path="${trimmed_path%"${trimmed_path##*[![:space:]]}"}"
 
     if [ -z "$trimmed_path" ]; then
       continue
