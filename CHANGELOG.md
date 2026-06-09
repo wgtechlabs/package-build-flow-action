@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [2.1.2] - 2026-06-09
+
+### Changed
+
+- actions/checkout to v6.0.3 and resolve package paths (#38)
+
 ## [2.1.1] - 2026-03-21
 
 ### Changed
