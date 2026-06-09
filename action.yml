@@ -45,7 +45,7 @@ inputs:
   
   # Package Configuration
   package-path:
-    description: 'Path to package.json'
+    description: 'Path to package.json. Relative paths are resolved from the workflow workspace, and repository contents are checked out automatically when needed.'
     required: false
     default: './package.json'
   
@@ -113,7 +113,7 @@ inputs:
     default: 'false'
   
   package-paths:
-    description: 'Comma-separated list of package.json paths (monorepo mode)'
+    description: 'Comma-separated list of package.json paths (monorepo mode). Relative paths are resolved from the workflow workspace.'
     required: false
     default: ''
   
@@ -294,6 +294,23 @@ runs:
         BUILD_SKIP_TYPES: ${{ inputs.build-skip-types }}
         PR_TITLE: ${{ github.event.pull_request.title }}
 
+    - name: Resolve Package Paths
+      id: resolve-paths
+      if: steps.commit-gate.outputs.should-build != 'false'
+      shell: bash
+      run: |
+        bash ${{ github.action_path }}/scripts/resolve-package-paths.sh
+      env:
+        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATHS: ${{ inputs.package-paths }}
+
+    - name: Checkout Repository Contents
+      if: steps.commit-gate.outputs.should-build != 'false' && steps.resolve-paths.outputs.checkout-required == 'true'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+
     # =============================================================================
     # MONOREPO MODE
     # =============================================================================
@@ -309,8 +326,8 @@ runs:
         GITHUB_CONTEXT: ${{ toJson(github) }}
         MAIN_BRANCH: ${{ inputs.main-branch }}
         DEV_BRANCH: ${{ inputs.dev-branch }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
-        PACKAGE_PATHS: ${{ inputs.package-paths }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
+        PACKAGE_PATHS: ${{ steps.resolve-paths.outputs.package-paths }}
         WORKSPACE_DETECTION: ${{ inputs.workspace-detection }}
         CHANGED_ONLY: ${{ inputs.changed-only }}
         DEPENDENCY_ORDER: ${{ inputs.dependency-order }}
@@ -381,7 +398,7 @@ runs:
         GITHUB_CONTEXT: ${{ toJson(github) }}
         MAIN_BRANCH: ${{ inputs.main-branch }}
         DEV_BRANCH: ${{ inputs.dev-branch }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         VERSION_PREFIX: ${{ inputs.version-prefix }}
     
     - name: Configure Registries
@@ -397,7 +414,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
     
     - name: Build and Publish Package
@@ -410,7 +427,7 @@ runs:
         REGISTRY: ${{ inputs.registry }}
         PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
         NPM_TAG: ${{ steps.detect-flow.outputs.npm-tag }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         BUILD_SCRIPT: ${{ inputs.build-script }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
@@ -431,7 +448,7 @@ runs:
       env:
         AUDIT_LEVEL: ${{ inputs.audit-level }}
         FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
     
     - name: Generate Outputs
@@ -442,7 +459,7 @@ runs:
         bash ${{ github.action_path }}/scripts/generate-outputs.sh
       env:
         PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         REGISTRY: ${{ inputs.registry }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
@@ -462,7 +479,7 @@ runs:
         BUILD_FLOW_TYPE: ${{ steps.detect-flow.outputs.build-flow-type }}
         PACKAGE_VERSION: ${{ steps.detect-flow.outputs.version }}
         NPM_TAG: ${{ steps.detect-flow.outputs.npm-tag }}
-        PACKAGE_PATH: ${{ inputs.package-path }}
+        PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         REGISTRY: ${{ inputs.registry }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}

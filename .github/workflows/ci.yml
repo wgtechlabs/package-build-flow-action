@@ -52,6 +52,56 @@ jobs:
           run_case "warengonzaga" "true" "false" ""
           run_case "dependabot[bot]" "false" "false" ""
 
+  package-path-resolution:
+    name: Package Path Resolution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare local action copy and consumer fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p local-action
+          rsync -a --exclude '.git' --exclude 'local-action' ./ ./local-action/
+
+          cat > package.json <<'EOF'
+          {
+           "name": "@wgtechlabs/path-resolution-fixture",
+           "version": "0.1.0",
+           "scripts": {
+             "build": "echo path-resolution-build",
+             "test": "echo path-resolution-test"
+           }
+          }
+          EOF
+
+      - name: Run action from nested action path
+        id: nested-action
+        uses: ./local-action
+        with:
+          package-manager: npm
+          registry: github
+          github-token: ${{ github.token }}
+          publish-enabled: 'false'
+          audit-enabled: 'false'
+          pr-comment-enabled: 'false'
+
+      - name: Assert nested action outputs
+        shell: bash
+        run: |
+          test "${{ steps.nested-action.outputs.build-skipped }}" = "false"
+          test -n "${{ steps.nested-action.outputs.package-version }}"
+          test "${{ steps.nested-action.outputs.github-published }}" = "false"
+
   single-package-bun:
     name: Single Package Bun
     runs-on: ubuntu-latest
