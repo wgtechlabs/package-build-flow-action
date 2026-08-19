@@ -40,6 +40,24 @@ fi
 BASE_VERSION=$(jq -r '.version' "$PACKAGE_PATH")
 echo "📦 Current package version: $BASE_VERSION"
 
+validate_planned_inputs() {
+  if [ -z "${PLANNED_VERSION:-}" ] && [ -z "${PLANNED_NPM_TAG:-}" ]; then
+    return
+  fi
+
+  if [ -z "${PLANNED_VERSION:-}" ] || [ -z "${PLANNED_NPM_TAG:-}" ]; then
+    echo "❌ Error: planned-version and planned-npm-tag must be provided together"
+    exit 1
+  fi
+
+  if ! [[ "$PLANNED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+    echo "❌ Error: planned-version '$PLANNED_VERSION' must be valid SemVer"
+    exit 1
+  fi
+}
+
+validate_planned_inputs
+
 # Function to extract prerelease tag from version (e.g., "beta" from "1.0.0-beta.1")
 extract_prerelease_tag() {
   local version=$1
@@ -56,6 +74,7 @@ extract_prerelease_tag() {
 BUILD_FLOW_TYPE=""
 PACKAGE_VERSION=""
 NPM_TAG=""
+PLANNED_PUBLISH="false"
 
 if [ "$EVENT_NAME" = "release" ]; then
   # GitHub Release event
@@ -122,9 +141,16 @@ elif [ "$EVENT_NAME" = "push" ]; then
   if [ "$REF_NAME" = "$MAIN_BRANCH" ]; then
     # Push to main branch - staging
     BUILD_FLOW_TYPE="staging"
-    PACKAGE_VERSION="${BASE_VERSION}-staging.${SHORT_SHA}"
-    NPM_TAG="staging"
-    echo "🎯 Flow: Staging release (push to main)"
+    if [ -n "${PLANNED_VERSION:-}" ]; then
+      PACKAGE_VERSION="$PLANNED_VERSION"
+      NPM_TAG="$PLANNED_NPM_TAG"
+      PLANNED_PUBLISH="true"
+      echo "🎯 Flow: Planned release candidate (push to main)"
+    else
+      PACKAGE_VERSION="${BASE_VERSION}-staging.${SHORT_SHA}"
+      NPM_TAG="staging"
+      echo "🎯 Flow: Staging release (push to main)"
+    fi
   elif [ "$REF_NAME" = "$DEV_BRANCH" ]; then
     # Push to dev branch
     BUILD_FLOW_TYPE="dev"
@@ -165,3 +191,4 @@ echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 echo "npm-tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
 echo "build-flow-type=$BUILD_FLOW_TYPE" >> "$GITHUB_OUTPUT"
 echo "short-sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+echo "planned-publish=$PLANNED_PUBLISH" >> "$GITHUB_OUTPUT"

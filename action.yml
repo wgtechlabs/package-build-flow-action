@@ -63,6 +63,16 @@ inputs:
     description: 'Prefix for version tags'
     required: false
     default: ''
+
+  planned-version:
+    description: 'Optional SemVer release candidate version for a push to the main branch; requires planned-npm-tag'
+    required: false
+    default: ''
+
+  planned-npm-tag:
+    description: 'Optional npm dist-tag for planned-version; requires planned-version'
+    required: false
+    default: ''
   
   # Security Configuration
   audit-enabled:
@@ -185,6 +195,10 @@ outputs:
   github-published:
     description: 'Whether published to GitHub Packages (true/false)'
     value: ${{ steps.publish.outputs.github-published }}
+
+  artifact-published:
+    description: 'Whether published to at least one registry (true/false)'
+    value: ${{ steps.publish.outputs.artifact-published }}
   
   # Security Audit Outputs
   audit-completed:
@@ -400,6 +414,8 @@ runs:
         DEV_BRANCH: ${{ inputs.dev-branch }}
         PACKAGE_PATH: ${{ steps.resolve-paths.outputs.package-path }}
         VERSION_PREFIX: ${{ inputs.version-prefix }}
+        PLANNED_VERSION: ${{ inputs.planned-version }}
+        PLANNED_NPM_TAG: ${{ inputs.planned-npm-tag }}
     
     - name: Configure Registries
       id: configure-registries
@@ -438,6 +454,7 @@ runs:
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         ACCESS: ${{ inputs.access }}
         BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
+        PLANNED_PUBLISH: ${{ steps.detect-flow.outputs.planned-publish }}
     
     - name: Run Security Audit
       id: audit
