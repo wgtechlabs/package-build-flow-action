@@ -10,6 +10,17 @@ echo "🏗️  Building and publishing package..."
 NPM_PUBLISHED="false"
 GITHUB_PUBLISHED="false"
 
+write_publish_outputs() {
+  local artifact_published="false"
+  if [ "$NPM_PUBLISHED" = "true" ] || [ "$GITHUB_PUBLISHED" = "true" ]; then
+    artifact_published="true"
+  fi
+
+  echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
+  echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+  echo "artifact-published=$artifact_published" >> "$GITHUB_OUTPUT"
+}
+
 # Get package details
 # Normalize PACKAGE_PATH to absolute path before cd to avoid relative path issues
 if [ ! -f "$PACKAGE_PATH" ]; then
@@ -281,8 +292,7 @@ publish_package() {
 if [ "$PUBLISH_ENABLED" != "true" ]; then
   echo "⏭️  Publishing disabled, skipping publish step"
   
-  echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
-  echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+  write_publish_outputs
   exit 0
 fi
 
@@ -334,8 +344,7 @@ if [ "$DRY_RUN" = "true" ]; then
     fi
   fi
   
-  echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
-  echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+  write_publish_outputs
   exit 0
 fi
 
@@ -407,8 +416,12 @@ echo "  NPM Published: $NPM_PUBLISHED"
 echo "  GitHub Published: $GITHUB_PUBLISHED"
 echo ""
 
-# Set outputs
-echo "npm-published=$NPM_PUBLISHED" >> "$GITHUB_OUTPUT"
-echo "github-published=$GITHUB_PUBLISHED" >> "$GITHUB_OUTPUT"
+# Set outputs before reporting a planned publish failure.
+write_publish_outputs
+
+if [ "${PLANNED_PUBLISH:-false}" = "true" ] && [ "$NPM_PUBLISHED" != "true" ] && [ "$GITHUB_PUBLISHED" != "true" ]; then
+  echo "❌ Planned publish failed in every selected registry"
+  exit 1
+fi
 
 # Note: Workspace backup restoration happens automatically via EXIT trap
