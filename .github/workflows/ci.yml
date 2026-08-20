@@ -329,6 +329,39 @@ jobs:
           run_case 0 1 1 1 0 true
           run_case 1 1 1 1 1 false
 
+          fixture_dir=$(mktemp -d)
+          bin_dir=$(mktemp -d)
+          output_file=$(mktemp)
+          mkdir -p "$fixture_dir/packages/pkg"
+          printf '%s\n' '{"name":"planned-monorepo-non-main","version":"0.1.0"}' > "$fixture_dir/packages/pkg/package.json"
+          printf '%s\n' '#!/bin/bash' 'if [ "$1" = "install" ]; then exit 0; fi' 'exit 1' > "$bin_dir/npm"
+          chmod +x "$bin_dir/npm"
+
+          PATH="$bin_dir:$PATH" \
+          GITHUB_CONTEXT='{"event_name":"push","ref_name":"dev","sha":"0123456789abcdef"}' \
+          MAIN_BRANCH="main" \
+          DEV_BRANCH="dev" \
+          PACKAGE_PATHS="$fixture_dir/packages/pkg/package.json" \
+          WORKSPACE_DETECTION="false" \
+          CHANGED_ONLY="false" \
+          DEPENDENCY_ORDER="false" \
+          BUILD_SCRIPT="" \
+          PACKAGE_MANAGER="npm" \
+          REGISTRY="npm" \
+          PUBLISH_ENABLED="false" \
+          DRY_RUN="false" \
+          ACCESS="public" \
+          AUDIT_ENABLED="false" \
+          ACTION_PATH="$GITHUB_WORKSPACE" \
+          PLANNED_NPM_TAG="rc" \
+          PLANNED_PACKAGE_VERSIONS='[{"name":"planned-monorepo-non-main","path":"'"$fixture_dir"'/packages/pkg","version":"1.2.3"}]' \
+          GITHUB_OUTPUT="$output_file" \
+          bash ./scripts/monorepo-orchestrator.sh
+
+          test "$(jq -r '.version' "$fixture_dir/packages/pkg/package.json")" = "0.1.0-dev.0123456"
+          rm -rf "$fixture_dir" "$bin_dir"
+          rm -f "$output_file"
+
   single-package-bun:
     name: Single Package Bun
     runs-on: ubuntu-latest

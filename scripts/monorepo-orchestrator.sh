@@ -442,10 +442,13 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   # Set environment for this package
   export PACKAGE_PATH
   PLANNED_VERSION=""
+  PLANNED_NPM_TAG_FOR_FLOW=""
   if [ "$PLANNED_MONOREPO_PUBLISH" = "true" ]; then
     PLANNED_VERSION="${PLANNED_VERSIONS[$(realpath -m "$PACKAGE_PATH")]}"
+    PLANNED_NPM_TAG_FOR_FLOW="$PLANNED_NPM_TAG"
   fi
-  export PLANNED_VERSION PLANNED_NPM_TAG
+  export PLANNED_VERSION
+  export PLANNED_NPM_TAG="$PLANNED_NPM_TAG_FOR_FLOW"
   
   # Create a temporary output file for this package's steps
   TEMP_OUTPUT=$(mktemp)
