@@ -139,6 +139,13 @@ if [ -n "${PLANNED_PACKAGE_VERSIONS:-}" ]; then
       PLANNED_VERSIONS["$resolved_path"]="$planned_version"
     done < <(echo "$PLANNED_PACKAGE_VERSIONS" | jq -r '.[] | [.path, .version] | @tsv' | tr -d '\r')
 
+    # Distinct raw paths can normalize to the same package.json (for example
+    # "packages/a" and "packages/a/package.json"), so re-check uniqueness here.
+    if [ "${#PLANNED_PATHS[@]}" -ne "$PLAN_COUNT" ]; then
+      echo "❌ Error: planned-package-versions contains duplicate package paths after normalization"
+      exit 1
+    fi
+
     FILTERED_PACKAGES=()
     for package_path in "${PACKAGE_ARRAY[@]}"; do
       if [ -n "${PLANNED_PATHS[$(realpath -m "$package_path")]+_}" ]; then
