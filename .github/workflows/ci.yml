@@ -131,6 +131,237 @@ jobs:
           test -n "${{ steps.nested-action.outputs.package-version }}"
           test "${{ steps.nested-action.outputs.github-published }}" = "false"
 
+  planned-package-publishing:
+    name: Planned Package Publishing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Assert planned version publishing behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_case() {
+              local registry="$1"
+              local npm_result="$2"
+              local github_result="$3"
+              local expected_exit="$4"
+              local expected_npm="$5"
+              local expected_github="$6"
+              local output_file
+              local fixture_dir
+              local bin_dir
+              local actual_exit=0
+
+              output_file=$(mktemp)
+              fixture_dir=$(mktemp -d)
+              bin_dir=$(mktemp -d)
+              printf '%s\n' '{"name":"planned-publish-fixture","version":"0.1.0"}' > "$fixture_dir/package.json"
+              printf '%s\n' '#!/bin/bash' \
+                'if [ "$1" = "install" ]; then exit 0; fi' \
+                'if [ "$1" = "publish" ]; then' \
+                '  case "$*" in' \
+                '    *registry.npmjs.org*) exit "${NPM_RESULT}" ;;' \
+                '    *npm.pkg.github.com*) exit "${GITHUB_RESULT}" ;;' \
+                '  esac' \
+                'fi' \
+                'exit 1' > "$bin_dir/npm"
+              chmod +x "$bin_dir/npm"
+
+              PATH="$bin_dir:$PATH" \
+              PACKAGE_PATH="$fixture_dir/package.json" \
+              PACKAGE_VERSION="1.2.3-rc.1" \
+              NPM_TAG="rc" \
+              PKG_MANAGER="npm" \
+              PACKAGE_MANAGER="npm" \
+              BUILD_SCRIPT="" \
+              PUBLISH_ENABLED="true" \
+              PLANNED_PUBLISH="true" \
+              DRY_RUN="false" \
+              REGISTRY="$registry" \
+              NPM_REGISTRY_URL="https://registry.npmjs.org" \
+              GITHUB_REGISTRY_URL="https://npm.pkg.github.com" \
+              GITHUB_REPOSITORY_OWNER="wgtechlabs" \
+              ACCESS="public" \
+              NPM_RESULT="$npm_result" \
+              GITHUB_RESULT="$github_result" \
+              GITHUB_OUTPUT="$output_file" \
+              bash ./scripts/build-and-publish.sh || actual_exit=$?
+
+              test "$actual_exit" = "$expected_exit"
+              test "$(grep '^npm-published=' "$output_file" | cut -d= -f2)" = "$expected_npm"
+              test "$(grep '^github-published=' "$output_file" | cut -d= -f2)" = "$expected_github"
+              test "$(grep '^artifact-published=' "$output_file" | cut -d= -f2)" = "$([ "$expected_npm" = true ] || [ "$expected_github" = true ] && echo true || echo false)"
+              test "$(jq -r '.version' "$fixture_dir/package.json")" = "1.2.3-rc.1"
+
+              rm -rf "$fixture_dir" "$bin_dir"
+              rm -f "$output_file"
+          }
+
+          run_case "npm" 0 1 0 true false
+          run_case "npm" 1 1 1 false false
+          run_case "github" 1 0 0 false true
+          run_case "github" 1 1 1 false false
+          run_case "both" 1 1 1 false false
+          run_case "both" 0 1 0 true false
+
+      - name: Assert planned input validation, main push, and legacy release flow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output_file=$(mktemp)
+            fixture_dir=$(mktemp -d)
+            printf '%s\n' '{"name":"planned-publish-fixture","version":"0.1.0"}' > "$fixture_dir/package.json"
+
+            main_context='{"event_name":"push","ref_name":"main","sha":"0123456789abcdef"}'
+            if GITHUB_CONTEXT="$main_context" MAIN_BRANCH="main" DEV_BRANCH="dev" PACKAGE_PATH="$fixture_dir/package.json" PLANNED_VERSION="1.2" PLANNED_NPM_TAG="rc" GITHUB_OUTPUT="$output_file" bash ./scripts/detect-package-flow.sh; then
+              exit 1
+            fi
+            if GITHUB_CONTEXT="$main_context" MAIN_BRANCH="main" DEV_BRANCH="dev" PACKAGE_PATH="$fixture_dir/package.json" PLANNED_VERSION="1.2.3-rc.01" PLANNED_NPM_TAG="rc" GITHUB_OUTPUT="$output_file" bash ./scripts/detect-package-flow.sh; then
+              exit 1
+            fi
+            if GITHUB_CONTEXT="$main_context" MAIN_BRANCH="main" DEV_BRANCH="dev" PACKAGE_PATH="$fixture_dir/package.json" PLANNED_VERSION="1.2.3-rc.1" GITHUB_OUTPUT="$output_file" bash ./scripts/detect-package-flow.sh; then
+              exit 1
+            fi
+
+            GITHUB_CONTEXT="$main_context" MAIN_BRANCH="main" DEV_BRANCH="dev" PACKAGE_PATH="$fixture_dir/package.json" \
+            PLANNED_VERSION="1.2.3-rc.1" PLANNED_NPM_TAG="rc" \
+            GITHUB_OUTPUT="$output_file" bash ./scripts/detect-package-flow.sh
+            test "$(grep '^version=' "$output_file" | tail -1 | cut -d= -f2)" = "1.2.3-rc.1"
+            test "$(grep '^npm-tag=' "$output_file" | tail -1 | cut -d= -f2)" = "rc"
+            test "$(grep '^planned-publish=' "$output_file" | tail -1 | cut -d= -f2)" = "true"
+
+            GITHUB_CONTEXT='{"event_name":"release","sha":"0123456789abcdef","event":{"release":{"tag_name":"v1.2.3","prerelease":false}}}' \
+            MAIN_BRANCH="main" DEV_BRANCH="dev" PACKAGE_PATH="$fixture_dir/package.json" \
+            GITHUB_OUTPUT="$output_file" bash ./scripts/detect-package-flow.sh
+            test "$(grep '^version=' "$output_file" | tail -1 | cut -d= -f2)" = "1.2.3"
+            test "$(grep '^npm-tag=' "$output_file" | tail -1 | cut -d= -f2)" = "latest"
+
+            rm -rf "$fixture_dir"
+          rm -f "$output_file"
+
+  planned-monorepo-publishing:
+    name: Planned Monorepo Publishing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Assert planned package versions and aggregate publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_case() {
+            local npm_a_result="$1"
+            local npm_b_result="$2"
+            local github_a_result="$3"
+            local github_b_result="$4"
+            local expected_exit="$5"
+            local expected_artifact="$6"
+            local fixture_dir bin_dir output_file build_results actual_exit=0
+
+            fixture_dir=$(mktemp -d)
+            bin_dir=$(mktemp -d)
+            output_file=$(mktemp)
+            mkdir -p "$fixture_dir/packages/pkg-a" "$fixture_dir/packages/pkg-b"
+            printf '%s\n' '{"name":"planned-monorepo-a","version":"0.1.0"}' > "$fixture_dir/packages/pkg-a/package.json"
+            printf '%s\n' '{"name":"planned-monorepo-b","version":"0.1.0"}' > "$fixture_dir/packages/pkg-b/package.json"
+            printf '%s\n' '#!/bin/bash' \
+              'if [ "$1" = "install" ]; then exit 0; fi' \
+              'if [ "$1" = "publish" ]; then' \
+              '  case "$*" in' \
+              '    *registry.npmjs.org*) case "$PWD" in *pkg-a) exit "${NPM_A_RESULT}" ;; *) exit "${NPM_B_RESULT}" ;; esac ;;' \
+              '    *npm.pkg.github.com*) case "$PWD" in *pkg-a) exit "${GITHUB_A_RESULT}" ;; *) exit "${GITHUB_B_RESULT}" ;; esac ;;' \
+              '  esac' \
+              'fi' \
+              'exit 1' > "$bin_dir/npm"
+            chmod +x "$bin_dir/npm"
+
+            PATH="$bin_dir:$PATH" \
+            GITHUB_CONTEXT='{"event_name":"push","ref_name":"main","sha":"0123456789abcdef"}' \
+            MAIN_BRANCH="main" \
+            DEV_BRANCH="dev" \
+            PACKAGE_PATHS="$fixture_dir/packages/pkg-a/package.json,$fixture_dir/packages/pkg-b/package.json" \
+            WORKSPACE_DETECTION="false" \
+            CHANGED_ONLY="false" \
+            DEPENDENCY_ORDER="false" \
+            BUILD_SCRIPT="" \
+            PACKAGE_MANAGER="npm" \
+            REGISTRY="both" \
+            NPM_TOKEN="test" \
+            NPM_REGISTRY_URL="https://registry.npmjs.org" \
+            GITHUB_TOKEN="test" \
+            GITHUB_REGISTRY_URL="https://npm.pkg.github.com" \
+            GITHUB_REPOSITORY_OWNER="wgtechlabs" \
+            PUBLISH_ENABLED="true" \
+            DRY_RUN="false" \
+            ACCESS="public" \
+            AUDIT_ENABLED="false" \
+            ACTION_PATH="$GITHUB_WORKSPACE" \
+            PLANNED_NPM_TAG="rc" \
+            PLANNED_PACKAGE_VERSIONS='[{"name":"planned-monorepo-a","path":"'"$fixture_dir"'/packages/pkg-a","oldVersion":"0.1.0","version":"1.2.3","bumpType":"minor","tag":"planned-monorepo-a@1.2.3"},{"name":"planned-monorepo-b","path":"'"$fixture_dir"'/packages/pkg-b","oldVersion":"0.1.0","version":"2.3.4","bumpType":"minor","tag":"planned-monorepo-b@2.3.4"}]' \
+            NPM_A_RESULT="$npm_a_result" \
+            NPM_B_RESULT="$npm_b_result" \
+            GITHUB_A_RESULT="$github_a_result" \
+            GITHUB_B_RESULT="$github_b_result" \
+            GITHUB_OUTPUT="$output_file" \
+            bash ./scripts/monorepo-orchestrator.sh || actual_exit=$?
+
+            test "$actual_exit" = "$expected_exit"
+            build_results=$(grep '^build-results=' "$output_file" | cut -d= -f2-)
+            test "$(grep '^artifact-published=' "$output_file" | tail -1 | cut -d= -f2)" = "$expected_artifact"
+            MONOREPO_MODE="true" BUILD_RESULTS_JSON="$build_results" CHANGED_PACKAGES_JSON="[]" GITHUB_OUTPUT="$output_file" \
+              bash ./scripts/generate-outputs.sh
+            test "$(grep '^artifact-published=' "$output_file" | tail -1 | cut -d= -f2)" = "$expected_artifact"
+            test "$(jq -r '.version' "$fixture_dir/packages/pkg-a/package.json")" = "1.2.3"
+            test "$(jq -r '.version' "$fixture_dir/packages/pkg-b/package.json")" = "2.3.4"
+
+            rm -rf "$fixture_dir" "$bin_dir"
+            rm -f "$output_file"
+          }
+
+          run_case 0 1 1 1 0 true
+          run_case 1 1 1 1 1 false
+
+          fixture_dir=$(mktemp -d)
+          bin_dir=$(mktemp -d)
+          output_file=$(mktemp)
+          mkdir -p "$fixture_dir/packages/pkg"
+          printf '%s\n' '{"name":"planned-monorepo-non-main","version":"0.1.0"}' > "$fixture_dir/packages/pkg/package.json"
+          printf '%s\n' '#!/bin/bash' 'if [ "$1" = "install" ]; then exit 0; fi' 'exit 1' > "$bin_dir/npm"
+          chmod +x "$bin_dir/npm"
+
+          PATH="$bin_dir:$PATH" \
+          GITHUB_CONTEXT='{"event_name":"push","ref_name":"dev","sha":"0123456789abcdef"}' \
+          MAIN_BRANCH="main" \
+          DEV_BRANCH="dev" \
+          PACKAGE_PATHS="$fixture_dir/packages/pkg/package.json" \
+          WORKSPACE_DETECTION="false" \
+          CHANGED_ONLY="false" \
+          DEPENDENCY_ORDER="false" \
+          BUILD_SCRIPT="" \
+          PACKAGE_MANAGER="npm" \
+          REGISTRY="npm" \
+          PUBLISH_ENABLED="false" \
+          DRY_RUN="false" \
+          ACCESS="public" \
+          AUDIT_ENABLED="false" \
+          ACTION_PATH="$GITHUB_WORKSPACE" \
+          PLANNED_NPM_TAG="rc" \
+          PLANNED_PACKAGE_VERSIONS='[{"name":"planned-monorepo-non-main","path":"'"$fixture_dir"'/packages/pkg","version":"1.2.3"}]' \
+          GITHUB_OUTPUT="$output_file" \
+          bash ./scripts/monorepo-orchestrator.sh
+
+          test "$(jq -r '.version' "$fixture_dir/packages/pkg/package.json")" = "0.1.0-dev.0123456"
+          rm -rf "$fixture_dir" "$bin_dir"
+          rm -f "$output_file"
+
   single-package-bun:
     name: Single Package Bun
     runs-on: ubuntu-latest

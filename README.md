@@ -71,6 +71,8 @@ The action automatically detects the build flow based on GitHub context:
 
 When `commit-convention-enabled: 'true'` blocks a build, the `build-flow-type` output is set to `skip` and `build-skipped` becomes `true`.
 
+For a planned main-branch release candidate, set both `planned-version` and `planned-npm-tag`. The action publishes those values on the main push; a planned publish fails only when every selected registry fails. In monorepo mode, pass the release action's `packages-updated` output as `planned-package-versions` with `planned-npm-tag`; its `{path, version}` entries select and version the planned packages.
+
 ### Flow Examples
 
 #### GitHub Release (Production)
@@ -178,6 +180,9 @@ Tag: patch
 | `build-script` | NPM script to run before publishing | `build` | No |
 | `package-manager` | Package manager to use: `npm`, `yarn`, `pnpm`, `bun`, or `auto` (auto-detects from lockfile) | `auto` | No |
 | `version-prefix` | Accepted for backward compatibility but ignored at runtime because npm package versions must remain valid SemVer | - | No |
+| `planned-version` | SemVer version to publish for a push to `main`; must be paired with `planned-npm-tag` | - | No |
+| `planned-npm-tag` | npm dist-tag to use with `planned-version`; must be paired with `planned-version` | - | No |
+| `planned-package-versions` | `packages-updated` JSON from `release-build-flow-action`; in monorepo mode on a push to `main`, each unique `{path, version}` entry is published with `planned-npm-tag` (directory paths and `package.json` paths are accepted; extra release-plan fields are ignored) | - | No |
 
 ### Commit Convention Gate Configuration
 
@@ -239,6 +244,7 @@ Tag: patch
 | `short-sha` | Short commit SHA (single-package mode) |
 | `npm-published` | Whether published to NPM (true/false) (single-package mode) |
 | `github-published` | Whether published to GitHub Packages (true/false) (single-package mode) |
+| `artifact-published` | Whether publishing succeeded in at least one configured registry (single package or any monorepo package) |
 | `audit-completed` | Whether security audit completed (single-package mode) |
 | `total-vulnerabilities` | Total vulnerabilities found (single-package mode) |
 | `critical-vulnerabilities` | Critical vulnerabilities count (single-package mode) |

@@ -109,12 +109,69 @@ else
   exit 1
 fi
 
+# A release plan names only packages that should be published and supplies
+# their immutable versions. The release action's extra fields are ignored.
+PLANNED_MONOREPO_PUBLISH=false
+if [ -n "${PLANNED_PACKAGE_VERSIONS:-}" ]; then
+  if [ -z "${PLANNED_NPM_TAG:-}" ]; then
+    echo "❌ Error: planned-package-versions requires planned-npm-tag"
+    exit 1
+  fi
+
+  if ! echo "$PLANNED_PACKAGE_VERSIONS" | jq -e 'type == "array" and length > 0 and all(.[]; type == "object" and (.path | type == "string" and length > 0) and (.version | type == "string" and length > 0)) and (map(.path) as $paths | ($paths | length) == ($paths | unique | length))' >/dev/null 2>&1; then
+    echo "❌ Error: planned-package-versions must be a JSON array of unique {path, version} objects"
+    exit 1
+  fi
+
+  PLAN_EVENT=$(echo "$GITHUB_CONTEXT" | jq -r '.event_name')
+  PLAN_REF=$(echo "$GITHUB_CONTEXT" | jq -r '(.ref_name // .ref // "") | sub("^refs/heads/"; "")')
+  if [ "$PLAN_EVENT" = "push" ] && [ "$PLAN_REF" = "$MAIN_BRANCH" ]; then
+    declare -A PLANNED_PATHS=()
+    declare -A PLANNED_VERSIONS=()
+    PLAN_COUNT=$(echo "$PLANNED_PACKAGE_VERSIONS" | jq 'length')
+    while IFS=$'\t' read -r planned_path planned_version; do
+      if [ "$(basename "$planned_path")" = "package.json" ]; then
+        resolved_path=$(realpath -m "$planned_path")
+      else
+        resolved_path=$(realpath -m "$planned_path/package.json")
+      fi
+      PLANNED_PATHS["$resolved_path"]=1
+      PLANNED_VERSIONS["$resolved_path"]="$planned_version"
+    done < <(echo "$PLANNED_PACKAGE_VERSIONS" | jq -r '.[] | [.path, .version] | @tsv' | tr -d '\r')
+
+    # Distinct raw paths can normalize to the same package.json (for example
+    # "packages/a" and "packages/a/package.json"), so re-check uniqueness here.
+    if [ "${#PLANNED_PATHS[@]}" -ne "$PLAN_COUNT" ]; then
+      echo "❌ Error: planned-package-versions contains duplicate package paths after normalization"
+      exit 1
+    fi
+
+    FILTERED_PACKAGES=()
+    for package_path in "${PACKAGE_ARRAY[@]}"; do
+      if [ -n "${PLANNED_PATHS[$(realpath -m "$package_path")]+_}" ]; then
+        FILTERED_PACKAGES+=("$package_path")
+      fi
+    done
+    if [ "${#FILTERED_PACKAGES[@]}" -ne "$PLAN_COUNT" ]; then
+      echo "❌ Error: planned-package-versions contains a path that is not configured for this monorepo"
+      exit 1
+    fi
+
+    PACKAGE_ARRAY=("${FILTERED_PACKAGES[@]}")
+    TOTAL_PACKAGES=${#PACKAGE_ARRAY[@]}
+    CHANGED_ONLY="false"
+    PLANNED_MONOREPO_PUBLISH=true
+    echo "🎯 Publishing $TOTAL_PACKAGES package(s) from the immutable release plan"
+  fi
+fi
+
 # Initialize results array
 BUILD_RESULTS="[]"
 
 # Track success/failure
 SUCCESSFUL_PACKAGES=0
 FAILED_PACKAGES=0
+PUBLISHED_ARTIFACTS=0
 
 echo "📦 Found $TOTAL_PACKAGES package(s) to process"
 echo ""
@@ -384,6 +441,14 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   
   # Set environment for this package
   export PACKAGE_PATH
+  PLANNED_VERSION=""
+  PLANNED_NPM_TAG_FOR_FLOW=""
+  if [ "$PLANNED_MONOREPO_PUBLISH" = "true" ]; then
+    PLANNED_VERSION="${PLANNED_VERSIONS[$(realpath -m "$PACKAGE_PATH")]}"
+    PLANNED_NPM_TAG_FOR_FLOW="$PLANNED_NPM_TAG"
+  fi
+  export PLANNED_VERSION
+  export PLANNED_NPM_TAG="$PLANNED_NPM_TAG_FOR_FLOW"
   
   # Create a temporary output file for this package's steps
   TEMP_OUTPUT=$(mktemp)
@@ -404,6 +469,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     if [ -f "$GITHUB_OUTPUT" ]; then
       PACKAGE_VERSION=$(grep "^version=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
       NPM_TAG=$(grep "^npm-tag=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
+      PLANNED_PUBLISH=$(grep "^planned-publish=" "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)
     fi
     
     # Fallback: parse from temp output if not in GITHUB_OUTPUT
@@ -479,6 +545,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   export PACKAGE_VERSION
   export NPM_TAG
   export DISCOVERED_PACKAGES
+  export PLANNED_PUBLISH
   
   # Save original GITHUB_OUTPUT and use per-package temp file
   ORIGINAL_GITHUB_OUTPUT="$GITHUB_OUTPUT"
@@ -490,16 +557,6 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     RESULT="success"
     SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
     
-    # Extract publish status from per-package output file
-    NPM_PUBLISHED="false"
-    GITHUB_PUBLISHED="false"
-    if [ -f "$PACKAGE_OUTPUT" ]; then
-      NPM_PUBLISHED=$(grep "^npm-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2-)
-      GITHUB_PUBLISHED=$(grep "^github-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2-)
-      # Default to false if grep found nothing
-      [ -z "$NPM_PUBLISHED" ] && NPM_PUBLISHED="false"
-      [ -z "$GITHUB_PUBLISHED" ] && GITHUB_PUBLISHED="false"
-    fi
   else
     cat "$TEMP_OUTPUT"
     echo "❌ Build and publish failed (but continuing with remaining packages)"
@@ -508,6 +565,16 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
     NPM_PUBLISHED="false"
     GITHUB_PUBLISHED="false"
+  fi
+
+  NPM_PUBLISHED=$(grep "^npm-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2- || true)
+  GITHUB_PUBLISHED=$(grep "^github-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2- || true)
+  ARTIFACT_PUBLISHED=$(grep "^artifact-published=" "$PACKAGE_OUTPUT" | tail -1 | cut -d= -f2- || true)
+  [ -z "$NPM_PUBLISHED" ] && NPM_PUBLISHED="false"
+  [ -z "$GITHUB_PUBLISHED" ] && GITHUB_PUBLISHED="false"
+  [ -z "$ARTIFACT_PUBLISHED" ] && ARTIFACT_PUBLISHED="false"
+  if [ "$ARTIFACT_PUBLISHED" = "true" ]; then
+    PUBLISHED_ARTIFACTS=$((PUBLISHED_ARTIFACTS + 1))
   fi
   
   # Restore original GITHUB_OUTPUT
@@ -547,7 +614,8 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg result "$RESULT" \
       --arg npm_published "$NPM_PUBLISHED" \
       --arg github_published "$GITHUB_PUBLISHED" \
-      '. += [{"name": $name, "version": $version, "result": $result, "npm-published": $npm_published, "github-published": $github_published}]')
+      --arg artifact_published "$ARTIFACT_PUBLISHED" \
+      '. += [{"name": $name, "version": $version, "result": $result, "npm-published": $npm_published, "github-published": $github_published, "artifact-published": $artifact_published}]')
   else
     BUILD_RESULTS=$(echo "$BUILD_RESULTS" | jq --arg name "$PACKAGE_NAME" \
       --arg version "$PACKAGE_VERSION" \
@@ -555,7 +623,8 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       --arg error "${ERROR_MESSAGE:-Unknown error}" \
       --arg npm_published "$NPM_PUBLISHED" \
       --arg github_published "$GITHUB_PUBLISHED" \
-      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": $npm_published, "github-published": $github_published}]')
+      --arg artifact_published "$ARTIFACT_PUBLISHED" \
+      '. += [{"name": $name, "version": $version, "result": $result, "error": $error, "npm-published": $npm_published, "github-published": $github_published, "artifact-published": $artifact_published}]')
   fi
   
   rm -f "$TEMP_OUTPUT" "$PACKAGE_OUTPUT"
@@ -576,9 +645,22 @@ echo ""
 
 # Set outputs
 echo "build-results=$(echo "$BUILD_RESULTS" | jq -c '.')" >> "$GITHUB_OUTPUT"
+if [ "$PUBLISHED_ARTIFACTS" -gt 0 ]; then
+  echo "artifact-published=true" >> "$GITHUB_OUTPUT"
+else
+  echo "artifact-published=false" >> "$GITHUB_OUTPUT"
+fi
 
-# Exit with error if any package failed
-if [ "$FAILED_PACKAGES" -gt 0 ]; then
+# A planned publish succeeds when any configured registry/package destination
+# accepts its artifact; every planned destination must fail to fail the run.
+if [ "$PLANNED_MONOREPO_PUBLISH" = "true" ] && [ "$PUBLISH_ENABLED" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+  if [ "$PUBLISHED_ARTIFACTS" -eq 0 ]; then
+    echo "❌ Planned monorepo publish failed in every selected registry"
+    exit 1
+  fi
+  echo "✅ Planned monorepo publish succeeded in $PUBLISHED_ARTIFACTS package(s)"
+  exit 0
+elif [ "$FAILED_PACKAGES" -gt 0 ]; then
   echo "❌ Monorepo build completed with $FAILED_PACKAGES failure(s)"
   exit 1
 else
