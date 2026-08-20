@@ -27,6 +27,7 @@ if [ "$MONOREPO_MODE" = "true" ]; then
   PACKAGES_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select((.result == "success") and ((.["npm-published"] == "true") or (.["github-published"] == "true"))) | .name] | join(",")')
   PACKAGES_FAILED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.result == "failed") | .name] | join(",")')
   TOTAL_PACKAGES=$(echo "$BUILD_RESULTS_JSON" | jq '. | length')
+  ARTIFACT_PUBLISHED=$(echo "$BUILD_RESULTS_JSON" | jq -r '[.[] | select(.["artifact-published"] == "true")] | any')
   
   # Determine changed packages count:
   # - If CHANGED_COUNT is -1, upstream signaled "all packages changed"
@@ -51,6 +52,7 @@ if [ "$MONOREPO_MODE" = "true" ]; then
   echo "packages-failed=$PACKAGES_FAILED" >> "$GITHUB_OUTPUT"
   echo "total-packages=$TOTAL_PACKAGES" >> "$GITHUB_OUTPUT"
   echo "changed-packages-count=$CHANGED_PACKAGES_COUNT" >> "$GITHUB_OUTPUT"
+  echo "artifact-published=$ARTIFACT_PUBLISHED" >> "$GITHUB_OUTPUT"
   
   echo ""
   echo "✅ Monorepo outputs generated"

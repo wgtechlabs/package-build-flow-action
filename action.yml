@@ -73,7 +73,12 @@ inputs:
     description: 'Optional npm dist-tag for planned-version; requires planned-version'
     required: false
     default: ''
-  
+
+  planned-package-versions:
+    description: 'JSON packages-updated output from release-build-flow-action for a planned monorepo publish; requires planned-npm-tag'
+    required: false
+    default: ''
+
   # Security Configuration
   audit-enabled:
     description: 'Enable package-manager-aware security scanning (npm audit or bun audit)'
@@ -197,8 +202,8 @@ outputs:
     value: ${{ steps.publish.outputs.github-published }}
 
   artifact-published:
-    description: 'Whether published to at least one registry (true/false)'
-    value: ${{ steps.publish.outputs.artifact-published }}
+    description: 'Whether publishing succeeded in at least one configured registry for the package or monorepo (true/false)'
+    value: ${{ inputs.monorepo == 'true' && steps.monorepo-orchestrator.outputs.artifact-published || steps.publish.outputs.artifact-published }}
   
   # Security Audit Outputs
   audit-completed:
@@ -361,6 +366,8 @@ runs:
         AUDIT_ENABLED: ${{ inputs.audit-enabled }}
         AUDIT_LEVEL: ${{ inputs.audit-level }}
         FAIL_ON_AUDIT: ${{ inputs.fail-on-audit }}
+        PLANNED_NPM_TAG: ${{ inputs.planned-npm-tag }}
+        PLANNED_PACKAGE_VERSIONS: ${{ inputs.planned-package-versions }}
         ACTION_PATH: ${{ github.action_path }}
         BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
     
