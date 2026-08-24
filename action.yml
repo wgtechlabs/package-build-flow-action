@@ -325,7 +325,7 @@ runs:
 
     - name: Checkout Repository Contents
       if: steps.commit-gate.outputs.should-build != 'false' && steps.resolve-paths.outputs.checkout-required == 'true'
-      uses: actions/checkout@v6.0.3
+      uses: actions/checkout@v7.0.1
       with:
         fetch-depth: 0
         token: ${{ inputs.github-token }}
