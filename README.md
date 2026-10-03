@@ -398,7 +398,7 @@ steps:
 Choose `npm-auth-method: oidc` for fully automatic npm publication. GitHub issues an OIDC identity token for the workflow; npm validates the configured trust and exchanges it for a short-lived publishing credential. No `npm-token` is required. Existing consumers keep `token` authentication by default.
 
 > [!IMPORTANT]
-> OIDC support is not included in `v2.2.0`. The example below pins the implementation commit from [PR #45](https://github.com/wgtechlabs/package-build-flow-action/pull/45); after release, use a released version or immutable commit containing this feature. Adding `npm-auth-method` to an older action does not enable OIDC.
+> OIDC support is not included in `v2.2.0`. The example below pins an implementation commit containing OIDC and its safety fixes; use a released version or immutable commit containing these changes. Adding `npm-auth-method` to an older action does not enable OIDC.
 
 #### Set up the npm package
 
@@ -433,7 +433,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.10'
-      - uses: wgtechlabs/package-build-flow-action@5ca536620e2d5d1fb5c4eb632c38ed81dfad7b10 # OIDC implementation; see availability note
+      - uses: wgtechlabs/package-build-flow-action@2a33d5de6b0651877035ec83b2e7234e3bc9894c # OIDC and safety fixes; see availability note
         with:
           package-manager: bun
           registry: both
@@ -442,6 +442,10 @@ jobs:
 ```
 
 Add your existing release triggers and version-planning inputs to this job. Bun handles installation, tests, build, and packing; the npm CLI publishes the archive using its native OIDC exchange. GitHub Packages still uses its own GitHub token. The OIDC publishing process isolates npm configuration and clears long-lived npm authentication inputs so an OIDC failure cannot fall back to a saved npm token.
+
+In OIDC mode, npm's lifecycle runner executes `prepublishOnly` before packing and `publish`/`postpublish` after a successful upload. Each event runs once unless npm's `ignore-scripts` setting disables these hooks; a failing `prepublishOnly` blocks publication. Bun's `ignoreScripts` configuration continues to govern Bun installation and packing, but does not disable these npm-managed publish hooks. An after-publication hook can fail after the registry has accepted the version, so inspect the registry before retrying.
+
+The action stores original workspace and package `.npmrc` files outside the package tree and restores them during cleanup. It does not create `.npmrc.backup` files inside archives. This configuration handling applies to both authentication modes.
 
 Reusable workflows need the permission in both the caller and publishing workflow, and the wrapper must forward `npm-auth-method`. npm validates the caller's filename, not the library workflow's filename. This primitive update does not itself upgrade existing Build Flow pins or consumer permissions.
 
