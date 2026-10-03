@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [2.3.0] - 2026-10-03
+
+### Added
+
+- support npm trusted publishing (#45)
+
+### Changed
+
+- Bump actions/checkout from 6.0.3 to 7.0.1 (#42)
+- Bump wgtechlabs/release-build-flow-action from 1.7.0 to 1.8.0 (#43)
+- Bump actions/setup-node from 4 to 7 (#44)
+
+### Security
+
+- protect registry credentials and publish hooks (#47)
+
 ## [2.2.0] - 2026-08-20
 
 ### Added
