@@ -433,7 +433,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.10'
-      - uses: wgtechlabs/package-build-flow-action@2a33d5de6b0651877035ec83b2e7234e3bc9894c # OIDC and safety fixes; see availability note
+      - uses: wgtechlabs/package-build-flow-action@556260d415da349a2b8d47e6c0c001424abe009d # OIDC and safety fixes; see availability note
         with:
           package-manager: bun
           registry: both
