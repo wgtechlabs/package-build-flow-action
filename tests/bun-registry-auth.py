@@ -280,6 +280,53 @@ class RegistryAuthentication(unittest.TestCase):
             self.assertEqual(config.read_text(), original)
         self.assertFalse(Path(self.outputs()['registry-backup-dir']).exists())
 
+    def test_nested_config_links_are_replaced_without_overwriting_packaged_files(self):
+        for manager in ('npm', 'bun'):
+            for link_type in ('symlink', 'hardlink'):
+                with self.subTest(manager=manager, link_type=link_type):
+                    package = self.package(manager + '-' + link_type)
+                    manifest = json.loads(package.read_text())
+                    manifest.pop('files')
+                    package.write_text(json.dumps(manifest))
+                    marker = package.parent / 'public-marker.txt'
+                    original = b'strict-ssl=true\n'
+                    marker.write_bytes(original)
+                    config = package.parent / '.npmrc'
+                    if link_type == 'symlink':
+                        config.symlink_to(marker)
+                    else:
+                        os.link(marker, config)
+                    self.env['PACKAGE_MANAGER'] = manager
+                    self.tarballs.clear()
+                    self.run_script('configure-registries.sh')
+                    self.run_script('build-and-publish.sh')
+                    self.assertFalse(config.is_symlink())
+                    self.assertNotEqual(config.stat().st_ino, marker.stat().st_ino)
+                    self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(marker.read_bytes(), original)
+                    self.assert_tarballs_exclude_credentials()
+                    for data in self.tarballs:
+                        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                            self.assertEqual(archive.extractfile('package/public-marker.txt').read(), original)
+                    self.restore_registry_config()
+                    self.assertEqual(config.read_bytes(), original)
+                    self.assertEqual(marker.read_bytes(), original)
+                    self.assertEqual(config.is_symlink(), link_type == 'symlink')
+
+    def test_oidc_captures_original_workspace_ignore_scripts_with_env_precedence(self):
+        package = self.package()
+        (self.root / 'package.json').write_text(json.dumps({'private': True, 'workspaces': ['packages/*']}))
+        (self.root / '.npmrc').write_text('ignore-scripts=true\n')
+        self.env.update({'NPM_AUTH_METHOD': 'oidc', 'REGISTRY': 'npm'})
+        self.run_script('configure-registries.sh')
+        self.assertEqual(self.outputs()['npm-ignore-scripts'], 'true')
+        self.restore_registry_config()
+        self.env['npm_config_ignore_scripts'] = 'false'
+        self.run_script('configure-registries.sh')
+        self.assertEqual(self.outputs()['npm-ignore-scripts'], 'false')
+        self.restore_registry_config()
+        self.assertEqual((self.root / '.npmrc').read_text(), 'ignore-scripts=true\n')
+
     def test_monorepo_validation_keeps_existing_package_config_symlink(self):
         package = self.package()
         manifest = json.loads(package.read_text())

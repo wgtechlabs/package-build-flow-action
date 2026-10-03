@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import threading
 import tarfile
@@ -66,6 +67,9 @@ class TrustedPublishing(unittest.TestCase):
 
             def do_POST(self):
                 self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                if registry != 'npm':
+                    self.respond(404, {'error': 'oidc_not_supported'})
+                    return
                 valid = self.path.startswith('/-/npm/v1/oidc/token/exchange/package/') and self.headers.get('Authorization') == 'Bearer ' + JWT
                 owner.oidc_requests.append(('exchange', valid))
                 self.respond(403 if owner.exchange_fails else 200, {'error': 'denied'} if owner.exchange_fails else {'token': EPHEMERAL_TOKEN})
@@ -91,6 +95,9 @@ class TrustedPublishing(unittest.TestCase):
 
     def configure(self):
         self.run_script('configure-registries.sh')
+        resolved = self.outputs().get('npm-ignore-scripts')
+        if resolved:
+            self.env['NPM_PUBLISH_IGNORE_SCRIPTS'] = resolved
         config = (self.root / '.npmrc').read_text()
         self.assertNotIn(auth.NPM_TOKEN, config)
         self.assertNotIn(self.urls['npm'].replace('http:', '') + '/:_authToken', config)
@@ -178,22 +185,29 @@ class TrustedPublishing(unittest.TestCase):
                 self.assertFalse((package.parent / 'after-upload').exists())
                 self.assertEqual(self.requests, [])
 
-    def test_publish_hook_failure_reports_failure_after_upload(self):
-        for manager in ('npm', 'bun'):
-            with self.subTest(manager=manager):
+    def test_post_upload_hook_failure_preserves_publication_outputs_and_fails(self):
+        cases = [('npm', 'npm', 'publish', 'true'), ('bun', 'npm', 'postpublish', 'false'),
+                 ('npm', 'both', 'publish', 'false'), ('bun', 'both', 'postpublish', 'true')]
+        for manager, registry, event, planned in cases:
+            with self.subTest(manager=manager, registry=registry, event=event, planned=planned):
                 self.requests.clear()
-                package = self.package(manager)
+                package = self.package(manager + '-' + registry)
                 manifest = json.loads(package.read_text())
-                manifest['scripts'] = {'publish': 'echo post-upload-failed >&2; exit 19',
-                                       'postpublish': 'echo should-not-run > postpublish-ran'}
+                manifest['scripts'] = {'postpublish': 'echo ran > postpublish-ran'}
+                # Fail only the first (npm) attempt so the second registry may succeed.
+                manifest['scripts'][event] = ('if [ ! -f post-hook-failed ]; then touch post-hook-failed; '
+                                              'echo post-upload-failed >&2; exit 19; fi')
                 package.write_text(json.dumps(manifest))
-                self.env.update({'PACKAGE_MANAGER': manager, 'REGISTRY': 'npm'})
+                self.env.update({'PACKAGE_MANAGER': manager, 'REGISTRY': registry, 'PLANNED_PUBLISH': planned})
                 self.configure()
-                result = self.run_script('build-and-publish.sh', expected_exit=1)
+                result = self.run_script('build-and-publish.sh', expected_exit=2)
                 self.assertIn('post-upload-failed', result.stdout + result.stderr)
-                self.assert_published(['npm'])  # Publication happened before the failing hook.
-                self.assertFalse((package.parent / 'postpublish-ran').exists())
-                self.assertEqual(self.outputs()['npm-published'], 'false')
+                self.assert_published(['npm', 'github'] if registry == 'both' else ['npm'])
+                if registry == 'npm' and event == 'publish':
+                    self.assertFalse((package.parent / 'postpublish-ran').exists())
+                self.assertEqual(self.outputs()['npm-published'], 'true')
+                self.assertEqual(self.outputs()['github-published'], 'true' if registry == 'both' else 'false')
+                self.assertEqual(self.outputs()['artifact-published'], 'true')
 
     def test_npm_ignore_scripts_controls_explicit_publish_hooks_for_each_manager(self):
         for manager in ('npm', 'bun'):
@@ -219,6 +233,36 @@ class TrustedPublishing(unittest.TestCase):
                 else:
                     self.assertFalse(pack_hooks.exists())
 
+    def test_project_npmrc_opt_out_survives_registry_reconfiguration(self):
+        cases = [(manager, location, 'npm') for manager in ('npm', 'bun') for location in ('root', 'nested')]
+        cases.append(('npm', 'nested', 'both'))
+        for manager, location, registry in cases:
+            with self.subTest(manager=manager, location=location, registry=registry):
+                self.requests.clear()
+                package = self.package(manager + '-' + location + '-' + registry)
+                if location == 'root':
+                    root_package = self.root / 'package.json'
+                    root_package.write_text(package.read_text())
+                    (self.root / 'index.js').write_text('export const fixture = true;')
+                    (self.root / 'package-lock.json').unlink(missing_ok=True)
+                    package = root_package
+                    self.env['PACKAGE_PATH'] = str(package)
+                manifest = json.loads(package.read_text())
+                events = ['prepublishOnly', 'publish', 'postpublish']
+                if manager == 'npm':
+                    events += ['preinstall', 'install', 'postinstall', 'prepack', 'prepare', 'postpack']
+                manifest['scripts'] = {event: 'echo project-hook-must-not-run >&2; exit 19' for event in events}
+                package.write_text(json.dumps(manifest))
+                (package.parent / '.npmrc').write_text('ignore-scripts=true\n')
+                self.env.update({'PACKAGE_MANAGER': manager, 'REGISTRY': registry})
+                self.env.pop('npm_config_ignore_scripts', None)
+                self.configure()
+                self.assertEqual(self.env['NPM_PUBLISH_IGNORE_SCRIPTS'], 'true')
+                result = self.run_script('build-and-publish.sh')
+                self.assertNotIn('project-hook-must-not-run', result.stdout + result.stderr)
+                self.assert_published(['npm', 'github'] if registry == 'both' else ['npm'])
+                self.assertEqual(self.outputs()['npm-published'], 'true')
+
     def test_monorepo_inherits_oidc_without_npm_token(self):
         paths = [self.package(name) for name in ('a', 'b')]
         self.env.update({
@@ -236,6 +280,43 @@ class TrustedPublishing(unittest.TestCase):
         self.assertEqual(self.oidc_requests, [('identity', True), ('exchange', True)] * 2)
         results = json.loads(self.outputs()['build-results'])
         self.assertTrue(all(result['npm-published'] == result['github-published'] == 'true' for result in results))
+
+    def assert_monorepo_post_upload_failure(self, planned=False):
+        paths = [self.package(name) for name in ('a', 'b')]
+        manifest = json.loads(paths[0].read_text())
+        manifest['scripts'] = {'postpublish': 'echo post-upload-failed >&2; exit 19'}
+        paths[0].write_text(json.dumps(manifest))
+        self.env.update({
+            'REGISTRY': 'npm',
+            'PACKAGE_PATHS': ','.join(str(path) for path in paths),
+            'WORKSPACE_DETECTION': 'false',
+            'CHANGED_ONLY': 'false',
+            'DEPENDENCY_ORDER': 'false',
+            'AUDIT_ENABLED': 'false',
+            'MAIN_BRANCH': 'main',
+            'DEV_BRANCH': 'dev',
+            'GITHUB_CONTEXT': json.dumps({'event_name': 'release', 'sha': '0123456789abcdef', 'event': {'release': {'tag_name': 'v0.1.0', 'prerelease': False}}}),
+        })
+        if planned:
+            self.env.update({
+                'PLANNED_PACKAGE_VERSIONS': json.dumps([{'path': str(path), 'version': '0.1.0'} for path in paths]),
+                'PLANNED_NPM_TAG': 'latest',
+                'GITHUB_CONTEXT': json.dumps({'event_name': 'push', 'ref_name': 'main', 'sha': '0123456789abcdef', 'event': {}}),
+            })
+        result = self.run_script('monorepo-orchestrator.sh', expected_exit=2)
+        self.assertIn('post-upload-failed', result.stdout + result.stderr)
+        self.assert_published(['npm', 'npm'])
+        results = json.loads(self.outputs()['build-results'])
+        self.assertEqual([item['result'] for item in results], ['failed', 'success'])
+        self.assertTrue(all(item['npm-published'] == item['artifact-published'] == 'true' for item in results))
+        self.assertEqual(self.outputs()['artifact-published'], 'true')
+
+    def test_monorepo_post_upload_failure_preserves_outputs(self):
+        self.assert_monorepo_post_upload_failure()
+
+    @unittest.skipUnless(os.uname().sysname == 'Linux', 'Planned monorepo requires Linux Bash/GNU realpath')
+    def test_planned_monorepo_post_upload_failure_is_not_hidden_by_success(self):
+        self.assert_monorepo_post_upload_failure(planned=True)
 
     def test_failed_exchange_cannot_fall_back_to_any_long_lived_token(self):
         self.package()
@@ -312,7 +393,8 @@ class TrustedPublishing(unittest.TestCase):
         bin_dir = self.root / 'bin'
         bin_dir.mkdir()
         command = bin_dir / 'npm'
-        command.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo 11.5.0; exit 0; fi\nexit 99\n')
+        self.env['TEST_NPM_BIN'] = shutil.which('npm', path=self.env['PATH'])
+        command.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo 11.5.0; exit 0; fi\nexec "$TEST_NPM_BIN" "$@"\n')
         command.chmod(0o755)
         self.env['PATH'] = str(bin_dir) + os.pathsep + self.env['PATH']
         self.configure()

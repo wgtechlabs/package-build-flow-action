@@ -9,6 +9,7 @@ echo "🏗️  Building and publishing package..."
 # Initialize outputs
 NPM_PUBLISHED="false"
 GITHUB_PUBLISHED="false"
+NPM_POST_PUBLISH_FAILED="false"
 NPM_AUTH_METHOD="${NPM_AUTH_METHOD:-token}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -85,7 +86,9 @@ should_install_from_workspace_root() {
 # Ensure .npmrc is available in the package directory
 # (configure-registries.sh writes it to the workspace root)
 if [ "$PWD" != "$WORKSPACE_ROOT" ] && [ -f "$WORKSPACE_ROOT/.npmrc" ]; then
-  cp "$WORKSPACE_ROOT/.npmrc" ".npmrc"
+  # Replace the path first: copying through a symlink or hard link can leak tokens.
+  rm -f -- ".npmrc"
+  (umask 077; cp "$WORKSPACE_ROOT/.npmrc" ".npmrc")
   echo "📋 Copied .npmrc from workspace root to package directory"
 fi
 
@@ -178,6 +181,10 @@ echo "📦 Using package manager: $PKG_MANAGER"
 # Install dependencies
 echo "📥 Installing dependencies..."
 INSTALL_DIR="$PACKAGE_DIR"
+NPM_SCRIPT_OPTIONS=()
+if [ -n "${NPM_PUBLISH_IGNORE_SCRIPTS:-}" ]; then
+  NPM_SCRIPT_OPTIONS+=("--ignore-scripts=$NPM_PUBLISH_IGNORE_SCRIPTS")
+fi
 if should_install_from_workspace_root; then
   INSTALL_DIR="$WORKSPACE_ROOT"
   echo "📍 Running Bun install from workspace root: $INSTALL_DIR"
@@ -197,9 +204,9 @@ elif [ "$PKG_MANAGER" = "yarn" ]; then
     run_install_in_dir "$INSTALL_DIR" yarn install --frozen-lockfile
   fi
 elif [ -f "$INSTALL_DIR/package-lock.json" ]; then
-  run_install_in_dir "$INSTALL_DIR" npm ci
+  run_install_in_dir "$INSTALL_DIR" npm ci "${NPM_SCRIPT_OPTIONS[@]}"
 else
-  run_install_in_dir "$INSTALL_DIR" npm install
+  run_install_in_dir "$INSTALL_DIR" npm install "${NPM_SCRIPT_OPTIONS[@]}"
 fi
 
 echo "✅ Dependencies installed"
@@ -293,7 +300,7 @@ publish_package() {
   if [ "$PKG_MANAGER" = "bun" ]; then
     publish_cmd=(bun publish --tag "$NPM_TAG" --registry "$registry_url")
   else
-    publish_cmd=(npm publish --tag "$NPM_TAG" --registry "$registry_url")
+    publish_cmd=(npm publish --tag "$NPM_TAG" --registry "$registry_url" "${NPM_SCRIPT_OPTIONS[@]}")
   fi
 
   if [ "$dry_run" = "true" ]; then
@@ -384,8 +391,15 @@ if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     NPM_PUBLISHED="true"
     echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
   else
-    echo "❌ Failed to publish to NPM"
-    NPM_PUBLISHED="false"
+    publish_status=$?
+    if [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$publish_status" -eq 2 ]; then
+      NPM_PUBLISHED="true"
+      NPM_POST_PUBLISH_FAILED="true"
+      echo "❌ NPM accepted the package, but a post-publication hook failed"
+    else
+      echo "❌ Failed to publish to NPM"
+      NPM_PUBLISHED="false"
+    fi
   fi
 fi
 
@@ -446,6 +460,11 @@ echo ""
 
 # Set outputs before reporting a planned publish failure.
 write_publish_outputs
+
+if [ "$NPM_POST_PUBLISH_FAILED" = "true" ]; then
+  echo "❌ Publication completed, but the NPM post-publication hook failure must be resolved"
+  exit 2
+fi
 
 if [ "${PLANNED_PUBLISH:-false}" = "true" ] && [ "$NPM_PUBLISHED" != "true" ] && [ "$GITHUB_PUBLISHED" != "true" ]; then
   echo "❌ Planned publish failed in every selected registry"

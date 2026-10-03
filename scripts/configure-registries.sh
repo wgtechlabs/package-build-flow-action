@@ -21,6 +21,17 @@ fi
 # Get package name from package.json
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 echo "📦 Package name: $PACKAGE_NAME"
+PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
+
+# Read npm's effective lifecycle policy before replacing any project configuration.
+if [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$REGISTRY" != "github" ]; then
+  NPM_PROJECT_PREFIX=$(cd "$PACKAGE_DIR" && npm prefix)
+  NPM_PUBLISH_IGNORE_SCRIPTS=$(cd "$PACKAGE_DIR" && npm --prefix "$NPM_PROJECT_PREFIX" config get ignore-scripts)
+  case "$NPM_PUBLISH_IGNORE_SCRIPTS" in
+    true|false) echo "npm-ignore-scripts=$NPM_PUBLISH_IGNORE_SCRIPTS" >> "$GITHUB_OUTPUT" ;;
+    *) echo "❌ Error: npm ignore-scripts must resolve to true or false" >&2; exit 1 ;;
+  esac
+fi
 
 # Preserve caller configuration outside the package tree until cleanup.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -39,10 +50,6 @@ echo "registry-backup-dir=$REGISTRY_CONFIG_BACKUP_DIR" >> "$GITHUB_OUTPUT"
 # Initialize .npmrc without following a caller's symlink.
 NPMRC_FILE=".npmrc"
 rm -f "$NPMRC_FILE"
-PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
-if [ "$PACKAGE_DIR" != "$(pwd -P)" ] && [ -L "$PACKAGE_DIR/.npmrc" ]; then
-  rm "$PACKAGE_DIR/.npmrc"
-fi
 
 # Clear or create .npmrc
 (umask 077; : > "$NPMRC_FILE")

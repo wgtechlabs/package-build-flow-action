@@ -472,6 +472,7 @@ runs:
         ACCESS: ${{ inputs.access }}
         BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
         PLANNED_PUBLISH: ${{ steps.detect-flow.outputs.planned-publish }}
+        NPM_PUBLISH_IGNORE_SCRIPTS: ${{ steps.configure-registries.outputs.npm-ignore-scripts }}
     
     - name: Run Security Audit
       id: audit
