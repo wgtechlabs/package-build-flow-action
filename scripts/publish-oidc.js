@@ -17,6 +17,7 @@ function run(command, args, options = {}) {
 }
 
 let directory;
+let uploaded = false;
 try {
   const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
   if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 14)) {
@@ -40,11 +41,25 @@ try {
     throw new Error('NPM trusted publishing requires HTTPS except for loopback registries used in local tests.');
   }
 
+  const packageManager = process.env.PACKAGE_MANAGER === 'bun' ? 'bun' : 'npm';
+  const ignoreScripts = (process.env.NPM_PUBLISH_IGNORE_SCRIPTS ||
+    run('npm', ['config', 'get', 'ignore-scripts']).trim()) === 'true';
+  const runLifecycle = event => {
+    if (ignoreScripts) return;
+    const sourceManifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    if (typeof sourceManifest.scripts?.[event] === 'string') {
+      // Run only this event: Bun's run command would add pre/post wrappers again.
+      run('npm', ['run', '--ignore-scripts', event]);
+    }
+  };
+
+  // Packing supplies prepack/prepare/postpack; restore publish's surrounding hooks.
+  runLifecycle('prepublishOnly');
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-oidc-'));
-  if (process.env.PACKAGE_MANAGER === 'bun') {
+  if (packageManager === 'bun') {
     run('bun', ['pm', 'pack', '--destination', directory]);
   } else {
-    run('npm', ['pack', '--pack-destination', directory]);
+    run('npm', ['pack', '--pack-destination', directory, `--ignore-scripts=${ignoreScripts}`]);
   }
   const tarballs = fs.readdirSync(directory).filter(file => file.endsWith('.tgz'));
   if (tarballs.length !== 1) throw new Error('Packing must produce exactly one tarball.');
@@ -78,9 +93,13 @@ try {
     '--registry', registry.href, '--tag', process.env.NPM_TAG];
   if (manifest.name.startsWith('@')) args.push('--access', process.env.ACCESS || 'public');
   run('npm', args, { cwd: directory, env });
+  uploaded = true;
+  runLifecycle('publish');
+  runLifecycle('postpublish');
 } catch (error) {
   console.error(`NPM trusted publishing failed: ${error.message}`);
-  process.exitCode = 1;
+  // Exit 2 tells the caller the registry accepted the bytes before a hook failed.
+  process.exitCode = uploaded ? 2 : 1;
 } finally {
   if (directory) fs.rmSync(directory, { recursive: true, force: true });
 }

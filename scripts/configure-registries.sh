@@ -21,16 +21,38 @@ fi
 # Get package name from package.json
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 echo "📦 Package name: $PACKAGE_NAME"
+PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
 
-# Initialize .npmrc
-NPMRC_FILE=".npmrc"
-if [ -f "$NPMRC_FILE" ]; then
-  echo "⚠️  Backing up existing .npmrc"
-  cp "$NPMRC_FILE" "${NPMRC_FILE}.backup"
+# Read npm's effective lifecycle policy before replacing any project configuration.
+if [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$REGISTRY" != "github" ]; then
+  NPM_PROJECT_PREFIX=$(cd "$PACKAGE_DIR" && npm prefix)
+  NPM_PUBLISH_IGNORE_SCRIPTS=$(cd "$PACKAGE_DIR" && npm --prefix "$NPM_PROJECT_PREFIX" config get ignore-scripts)
+  case "$NPM_PUBLISH_IGNORE_SCRIPTS" in
+    true|false) echo "npm-ignore-scripts=$NPM_PUBLISH_IGNORE_SCRIPTS" >> "$GITHUB_OUTPUT" ;;
+    *) echo "❌ Error: npm ignore-scripts must resolve to true or false" >&2; exit 1 ;;
+  esac
 fi
 
+# Preserve caller configuration outside the package tree until cleanup.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REGISTRY_CONFIG_BACKUP_DIR="${REGISTRY_CONFIG_BACKUP_DIR:-$(bash "$SCRIPT_DIR/registry-config-backup.sh" backup)}"
+cleanup_failed_configuration() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    bash "$SCRIPT_DIR/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+  fi
+}
+trap cleanup_failed_configuration EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+echo "registry-backup-dir=$REGISTRY_CONFIG_BACKUP_DIR" >> "$GITHUB_OUTPUT"
+
+# Initialize .npmrc without following a caller's symlink.
+NPMRC_FILE=".npmrc"
+rm -f "$NPMRC_FILE"
+
 # Clear or create .npmrc
-> "$NPMRC_FILE"
+(umask 077; : > "$NPMRC_FILE")
 
 # Configure NPM registry
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then

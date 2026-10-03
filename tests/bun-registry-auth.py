@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Exercise real publish commands against local registries with fake tokens only."""
 
+import base64
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tarfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +25,7 @@ class RegistryAuthentication(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.requests = []
+        self.tarballs = []
         self.urls = {}
         for registry, token in (("npm", NPM_TOKEN), ("github", GITHUB_TOKEN)):
             self.start_registry(registry, token)
@@ -58,10 +62,14 @@ class RegistryAuthentication(unittest.TestCase):
 
     def start_registry(self, registry, token):
         requests = self.requests
+        tarballs = self.tarballs
 
         class Handler(BaseHTTPRequestHandler):
             def do_PUT(self):
-                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                for attachment in payload.get('_attachments', {}).values():
+                    if attachment.get('content_type') == 'application/octet-stream':
+                        tarballs.append(base64.b64decode(attachment['data']))
                 correct_token = self.headers.get("Authorization") == "Bearer " + token
                 requests.append((registry, self.path, correct_token))
                 self.send_response(201 if correct_token else 401)
@@ -99,6 +107,11 @@ class RegistryAuthentication(unittest.TestCase):
             cwd=self.root, env=self.env, capture_output=True, text=True, timeout=30,
         )
         self.assertEqual(result.returncode, expected_exit, result.stdout + result.stderr)
+        if script == 'configure-registries.sh':
+            state = self.outputs().get('registry-backup-dir')
+            if state:
+                self.addCleanup(subprocess.run, ['bash', str(ROOT / 'scripts/registry-config-backup.sh'), 'restore', state],
+                                cwd=self.root, env=self.env.copy(), capture_output=True, check=True)
         # The action must not print either configured token.
         for token in (NPM_TOKEN, GITHUB_TOKEN):
             self.assertNotIn(token, result.stdout + result.stderr)
@@ -180,6 +193,175 @@ class RegistryAuthentication(unittest.TestCase):
             block = action.split(f"      id: {step_id}\n", 1)[1].split("    - name:", 1)[0]
             self.assertIn("NPM_TOKEN: ${{ inputs.npm-token }}", block)
             self.assertIn("GITHUB_TOKEN: ${{ inputs.github-token }}", block)
+
+    def restore_registry_config(self):
+        state = self.outputs()['registry-backup-dir']
+        subprocess.run(['bash', str(ROOT / 'scripts/registry-config-backup.sh'), 'restore', state],
+                       cwd=self.root, env=self.env, capture_output=True, check=True)
+        self.assertFalse(Path(state).exists())
+
+    def assert_tarballs_exclude_credentials(self):
+        self.assertTrue(self.tarballs)
+        for data in self.tarballs:
+            with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                for member in archive.getmembers():
+                    self.assertFalse(member.name.endswith('.npmrc.backup'), member.name)
+                    if member.isfile():
+                        contents = archive.extractfile(member).read()
+                        for token in ('fake-existing-config-secret', NPM_TOKEN, GITHUB_TOKEN):
+                            self.assertNotIn(token.encode(), contents, member.name)
+
+    def test_root_packages_do_not_pack_credentials_and_restore_original_config(self):
+        workspace = self.root
+        original = '//registry.npmjs.org/:_authToken=fake-existing-config-secret\n'
+        for manager in ('npm', 'bun'):
+            with self.subTest(manager=manager):
+                self.root = workspace / manager
+                self.root.mkdir()
+                package = self.root / 'package.json'
+                package.write_text(json.dumps({'name': '@fixture/root', 'version': '0.1.0'}))
+                (self.root / 'index.js').write_text('export const fixture = true;\n')
+                config = self.root / '.npmrc'
+                config.write_text(original)
+                config.chmod(0o600)
+                self.env.update({'PACKAGE_PATH': str(package), 'PACKAGE_MANAGER': manager})
+                self.tarballs.clear()
+                self.run_script('configure-registries.sh')
+                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                state = Path(self.outputs()['registry-backup-dir'])
+                self.assertNotIn(self.root, state.parents)
+                self.assertEqual(state.stat().st_mode & 0o777, 0o700)
+                self.run_script('build-and-publish.sh')
+                self.restore_registry_config()
+                self.assert_tarballs_exclude_credentials()
+                self.assertEqual(config.read_text(), original)
+                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                self.assertFalse((self.root / '.npmrc.backup').exists())
+
+    def test_monorepo_restores_root_and_package_configs_without_packing_credentials(self):
+        workspace = self.root
+        original = '//registry.npmjs.org/:_authToken=fake-existing-config-secret\n'
+        for manager in ('npm', 'bun'):
+            with self.subTest(manager=manager):
+                self.root = workspace / manager
+                self.root.mkdir()
+                paths = [self.package(name) for name in ('a', 'b')]
+                for package in paths:
+                    manifest = json.loads(package.read_text())
+                    manifest.pop('files')
+                    package.write_text(json.dumps(manifest))
+                configs = [self.root / '.npmrc', *(package.parent / '.npmrc' for package in paths)]
+                for config in configs:
+                    config.write_text(original)
+                self.env.update({
+                    'PACKAGE_PATHS': ','.join(str(package) for package in paths), 'PACKAGE_MANAGER': manager,
+                    'WORKSPACE_DETECTION': 'false', 'CHANGED_ONLY': 'false', 'DEPENDENCY_ORDER': 'false',
+                    'AUDIT_ENABLED': 'false', 'MAIN_BRANCH': 'main', 'DEV_BRANCH': 'dev',
+                    'GITHUB_CONTEXT': json.dumps({'event_name': 'release', 'sha': '0123456789abcdef', 'event': {'release': {'tag_name': 'v0.1.0', 'prerelease': False}}}),
+                })
+                self.tarballs.clear()
+                self.run_script('monorepo-orchestrator.sh')
+                self.assert_tarballs_exclude_credentials()
+                for config in configs:
+                    self.assertEqual(config.read_text(), original)
+                self.assertFalse(list(self.root.rglob('.npmrc.backup')))
+                state = self.outputs()['registry-backup-dir']
+                self.assertFalse(Path(state).exists())
+
+    def test_configuration_failure_restores_existing_configs(self):
+        package = self.package()
+        original = 'save-exactly=true\n'
+        configs = [self.root / '.npmrc', package.parent / '.npmrc']
+        for config in configs:
+            config.write_text(original)
+        self.env['NPM_TOKEN'] = ''
+        self.run_script('configure-registries.sh', expected_exit=1)
+        for config in configs:
+            self.assertEqual(config.read_text(), original)
+        self.assertFalse(Path(self.outputs()['registry-backup-dir']).exists())
+
+    def test_nested_config_links_are_replaced_without_overwriting_packaged_files(self):
+        for manager in ('npm', 'bun'):
+            for link_type in ('symlink', 'hardlink'):
+                with self.subTest(manager=manager, link_type=link_type):
+                    package = self.package(manager + '-' + link_type)
+                    manifest = json.loads(package.read_text())
+                    manifest.pop('files')
+                    package.write_text(json.dumps(manifest))
+                    marker = package.parent / 'public-marker.txt'
+                    original = b'strict-ssl=true\n'
+                    marker.write_bytes(original)
+                    config = package.parent / '.npmrc'
+                    if link_type == 'symlink':
+                        config.symlink_to(marker)
+                    else:
+                        os.link(marker, config)
+                    self.env['PACKAGE_MANAGER'] = manager
+                    self.tarballs.clear()
+                    self.run_script('configure-registries.sh')
+                    self.run_script('build-and-publish.sh')
+                    self.assertFalse(config.is_symlink())
+                    self.assertNotEqual(config.stat().st_ino, marker.stat().st_ino)
+                    self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(marker.read_bytes(), original)
+                    self.assert_tarballs_exclude_credentials()
+                    for data in self.tarballs:
+                        with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                            self.assertEqual(archive.extractfile('package/public-marker.txt').read(), original)
+                    self.restore_registry_config()
+                    self.assertEqual(config.read_bytes(), original)
+                    self.assertEqual(marker.read_bytes(), original)
+                    self.assertEqual(config.is_symlink(), link_type == 'symlink')
+
+    def test_oidc_captures_original_workspace_ignore_scripts_with_env_precedence(self):
+        package = self.package()
+        (self.root / 'package.json').write_text(json.dumps({'private': True, 'workspaces': ['packages/*']}))
+        (self.root / '.npmrc').write_text('ignore-scripts=true\n')
+        self.env.update({'NPM_AUTH_METHOD': 'oidc', 'REGISTRY': 'npm'})
+        self.run_script('configure-registries.sh')
+        self.assertEqual(self.outputs()['npm-ignore-scripts'], 'true')
+        self.restore_registry_config()
+        self.env['npm_config_ignore_scripts'] = 'false'
+        self.run_script('configure-registries.sh')
+        self.assertEqual(self.outputs()['npm-ignore-scripts'], 'false')
+        self.restore_registry_config()
+        self.assertEqual((self.root / '.npmrc').read_text(), 'ignore-scripts=true\n')
+
+    def test_monorepo_validation_keeps_existing_package_config_symlink(self):
+        package = self.package()
+        manifest = json.loads(package.read_text())
+        manifest['scripts'] = {'build': 'test -L .npmrc'}
+        package.write_text(json.dumps(manifest))
+        original = self.root / 'original-config'
+        original.write_text('strict-ssl=true\n')
+        config = package.parent / '.npmrc'
+        config.symlink_to(original)
+        self.env.update({
+            'PACKAGE_PATHS': str(package), 'PACKAGE_MANAGER': 'npm', 'BUILD_SCRIPT': 'build',
+            'NPM_TOKEN': '', 'GITHUB_TOKEN': '', 'PUBLISH_ENABLED': 'false',
+            'WORKSPACE_DETECTION': 'false', 'CHANGED_ONLY': 'false', 'DEPENDENCY_ORDER': 'false',
+            'AUDIT_ENABLED': 'false', 'MAIN_BRANCH': 'main', 'DEV_BRANCH': 'dev',
+            'GITHUB_CONTEXT': json.dumps({'event_name': 'release', 'sha': '0123456789abcdef', 'event': {'release': {'tag_name': 'v0.1.0', 'prerelease': False}}}),
+        })
+        self.run_script('monorepo-orchestrator.sh')
+        self.assertTrue(config.is_symlink())
+        self.assertEqual(config.read_text(), 'strict-ssl=true\n')
+        self.assertFalse((self.root / '.npmrc').exists())
+
+    def test_build_failure_cleanup_removes_created_config(self):
+        package = self.package()
+        manifest = json.loads(package.read_text())
+        manifest['scripts'] = {'build': 'exit 1'}
+        package.write_text(json.dumps(manifest))
+        self.env['BUILD_SCRIPT'] = 'build'
+        self.run_script('configure-registries.sh')
+        self.run_script('build-and-publish.sh', expected_exit=1)
+        self.restore_registry_config()
+        self.assertFalse((self.root / '.npmrc').exists())
+        self.assertFalse((package.parent / '.npmrc').exists())
+        action = (ROOT / 'action.yml').read_text()
+        cleanup = action.split('    - name: Restore Registry Configuration\n', 1)[1]
+        self.assertIn('if: always()', cleanup)
 
 
 if __name__ == "__main__":
