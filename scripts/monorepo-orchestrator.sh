@@ -4,6 +4,9 @@ set -e
 # Monorepo Orchestrator
 # Loops over multiple package paths and runs detect → build → publish for each
 
+# Keep registry configuration and publishing on the same authentication method.
+export NPM_AUTH_METHOD="${NPM_AUTH_METHOD:-token}"
+
 echo "🎯 Monorepo mode enabled"
 echo "===================="
 echo ""
@@ -384,6 +387,17 @@ elif [ "$DEPENDENCY_ORDER" != "true" ]; then
   echo ""
 fi
 
+REGISTRY_CONFIG_BACKUP_DIR=""
+PUBLISH_HOOK_FAILED="false"
+cleanup_registry_configuration() {
+  if [ -n "$REGISTRY_CONFIG_BACKUP_DIR" ]; then
+    bash "$ACTION_PATH/scripts/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+  fi
+}
+trap cleanup_registry_configuration EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # Process each package
 for i in "${!PACKAGE_ARRAY[@]}"; do
   PACKAGE_PATH="${PACKAGE_ARRAY[$i]}"
@@ -501,6 +515,11 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   
   # Step 2: Configure registries (always run if tokens are provided, to support private dependencies)
   echo ""
+  REGISTRY_CONFIG_BACKUP_DIR=$(bash "$ACTION_PATH/scripts/registry-config-backup.sh" backup)
+  export REGISTRY_CONFIG_BACKUP_DIR
+  PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
+  NPM_PUBLISH_IGNORE_SCRIPTS=""
+  export NPM_PUBLISH_IGNORE_SCRIPTS
   SKIP_REGISTRY_CONFIG=false
   
   # Skip only if both conditions are met:
@@ -521,9 +540,14 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     if bash "$ACTION_PATH/scripts/configure-registries.sh" > "$TEMP_OUTPUT" 2>&1; then
       cat "$TEMP_OUTPUT"
       echo "✅ Registry configuration completed"
+      if [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$REGISTRY" != "github" ]; then
+        NPM_PUBLISH_IGNORE_SCRIPTS=$(sed -n 's/^npm-ignore-scripts=//p' "$GITHUB_OUTPUT" | tail -1)
+      fi
     else
       cat "$TEMP_OUTPUT"
       echo "❌ Registry configuration failed"
+      cleanup_registry_configuration
+      REGISTRY_CONFIG_BACKUP_DIR=""
       RESULT="failed"
       ERROR_MESSAGE="Registry configuration failed"
       FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
@@ -537,6 +561,13 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
       echo ""
       continue
     fi
+  elif [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$REGISTRY" != "github" ]; then
+    NPM_PROJECT_PREFIX=$(cd "$PACKAGE_DIR" && npm prefix)
+    NPM_PUBLISH_IGNORE_SCRIPTS=$(cd "$PACKAGE_DIR" && npm --prefix "$NPM_PROJECT_PREFIX" config get ignore-scripts)
+    case "$NPM_PUBLISH_IGNORE_SCRIPTS" in
+      true|false) ;;
+      *) echo "❌ Error: npm ignore-scripts must resolve to true or false" >&2; exit 1 ;;
+    esac
   fi
   
   # Step 3: Build and publish
@@ -551,6 +582,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   ORIGINAL_GITHUB_OUTPUT="$GITHUB_OUTPUT"
   export GITHUB_OUTPUT="$PACKAGE_OUTPUT"
   
+  BUILD_EXIT_CODE=0
   if bash "$ACTION_PATH/scripts/build-and-publish.sh" > "$TEMP_OUTPUT" 2>&1; then
     cat "$TEMP_OUTPUT"
     echo "✅ Build and publish completed"
@@ -558,6 +590,7 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
     
   else
+    BUILD_EXIT_CODE=$?
     cat "$TEMP_OUTPUT"
     echo "❌ Build and publish failed (but continuing with remaining packages)"
     RESULT="failed"
@@ -573,6 +606,10 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   [ -z "$NPM_PUBLISHED" ] && NPM_PUBLISHED="false"
   [ -z "$GITHUB_PUBLISHED" ] && GITHUB_PUBLISHED="false"
   [ -z "$ARTIFACT_PUBLISHED" ] && ARTIFACT_PUBLISHED="false"
+  if [ "$BUILD_EXIT_CODE" -eq 2 ] && [ "$NPM_AUTH_METHOD" = "oidc" ] && [ "$NPM_PUBLISHED" = "true" ]; then
+    PUBLISH_HOOK_FAILED="true"
+    ERROR_MESSAGE="Package published but a publishing lifecycle hook failed"
+  fi
   if [ "$ARTIFACT_PUBLISHED" = "true" ]; then
     PUBLISHED_ARTIFACTS=$((PUBLISHED_ARTIFACTS + 1))
   fi
@@ -606,6 +643,9 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   else
     echo "⏭️  Security audit disabled"
   fi
+
+  cleanup_registry_configuration
+  REGISTRY_CONFIG_BACKUP_DIR=""
   
   # Add to results
   if [ "$RESULT" = "success" ]; then
@@ -649,6 +689,11 @@ if [ "$PUBLISHED_ARTIFACTS" -gt 0 ]; then
   echo "artifact-published=true" >> "$GITHUB_OUTPUT"
 else
   echo "artifact-published=false" >> "$GITHUB_OUTPUT"
+fi
+
+if [ "$PUBLISH_HOOK_FAILED" = "true" ]; then
+  echo "❌ A package was published but a publishing lifecycle hook failed"
+  exit 2
 fi
 
 # A planned publish succeeds when any configured registry/package destination

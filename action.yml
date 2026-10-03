@@ -10,8 +10,13 @@ inputs:
     default: 'both'
   
   npm-token:
-    description: 'NPM access token (required if registry includes npm)'
+    description: 'NPM access token (required when registry includes npm and npm-auth-method is token; ignored for oidc)'
     required: false
+
+  npm-auth-method:
+    description: 'NPM publishing authentication: token or oidc (requires an npm trusted publisher and id-token: write)'
+    required: false
+    default: 'token'
   
   npm-registry-url:
     description: 'NPM registry URL'
@@ -325,7 +330,7 @@ runs:
 
     - name: Checkout Repository Contents
       if: steps.commit-gate.outputs.should-build != 'false' && steps.resolve-paths.outputs.checkout-required == 'true'
-      uses: actions/checkout@v6.0.3
+      uses: actions/checkout@v7.0.1
       with:
         fetch-depth: 0
         token: ${{ inputs.github-token }}
@@ -355,6 +360,7 @@ runs:
         VERSION_PREFIX: ${{ inputs.version-prefix }}
         REGISTRY: ${{ inputs.registry }}
         NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
@@ -433,6 +439,7 @@ runs:
       env:
         REGISTRY: ${{ inputs.registry }}
         NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
@@ -455,13 +462,17 @@ runs:
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
         DRY_RUN: ${{ inputs.dry-run }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         ACCESS: ${{ inputs.access }}
         BOT_DRY_RUN: ${{ steps.bot-gate.outputs.is-bot }}
         PLANNED_PUBLISH: ${{ steps.detect-flow.outputs.planned-publish }}
+        NPM_PUBLISH_IGNORE_SCRIPTS: ${{ steps.configure-registries.outputs.npm-ignore-scripts }}
     
     - name: Run Security Audit
       id: audit
@@ -513,6 +524,14 @@ runs:
         NPM_PUBLISHED: ${{ steps.publish.outputs.npm-published }}
         GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
+
+    - name: Restore Registry Configuration
+      if: always() && inputs.monorepo != 'true' && steps.configure-registries.outputs.registry-backup-dir != ''
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+      env:
+        REGISTRY_CONFIG_BACKUP_DIR: ${{ steps.configure-registries.outputs.registry-backup-dir }}
 
 branding:
   icon: 'package'
