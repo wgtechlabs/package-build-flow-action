@@ -11,6 +11,7 @@ Automated JavaScript package versioning, building, and publishing with intellige
 
 - 🔄 **Intelligent Flow Detection**: Automatically determines build type based on GitHub context
 - 📦 **Dual Registry Support**: Publish to NPM Registry and/or GitHub Packages
+- 🔑 **npm Trusted Publishing**: Publish automatically with GitHub Actions OIDC, without a long-lived npm publishing token
 - 🏢 **Monorepo Support**: Process multiple packages independently with their own versions
 - ✨ **Auto-Scoping**: Automatically scopes packages for GitHub Packages using repository owner
 - 🏷️ **Smart Versioning**: SemVer versioning with pre-release tags
@@ -159,7 +160,8 @@ Tag: patch
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
 | `registry` | Target registry: `npm`, `github`, or `both` | `both` | No |
-| `npm-token` | NPM access token | - | If publishing to NPM |
+| `npm-token` | npm access token for legacy token authentication; omitted for OIDC | - | If npm is selected and `npm-auth-method: token` |
+| `npm-auth-method` | npm authentication: `token` or `oidc` (Trusted Publishing) | `token` | No |
 | `npm-registry-url` | NPM registry URL | `https://registry.npmjs.org` | No |
 | `github-token` | GitHub token for GitHub Packages | `${{ github.token }}` | No |
 | `github-registry-url` | GitHub Packages registry URL | `https://npm.pkg.github.com` | No |
@@ -339,7 +341,7 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so Bun-only workflows do not need `actions/setup-node`.
+The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so token-authenticated Bun publishing can run without `actions/setup-node`. OIDC additionally requires Node and the npm CLI for publication transport, as described below.
 
 ##### pnpm
 
@@ -385,7 +387,54 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Note:** Publishing and auditing are package-manager-aware. Bun projects use Bun-native helpers (`bun audit`, `bun publish`, and Bun to run JS helper scripts), while npm/pnpm/yarn projects continue to use the existing npm-based publish/audit behavior. Registry authentication still relies on `.npmrc`, which Bun can consume for npm and GitHub Packages.
+**Note:** Publishing and auditing are package-manager-aware. Bun projects use Bun-native helpers (`bun audit`, `bun publish`, and Bun to run JS helper scripts), while npm/pnpm/yarn projects continue to use the existing npm-based publish/audit behavior. Registry configuration uses `.npmrc`. Each token-authenticated Bun publish also receives the selected registry token through process-scoped `BUN_CONFIG_TOKEN` and `NPM_CONFIG_TOKEN`, including dual-registry and monorepo publishing. OIDC uses the npm CLI only for npm publication; Bun remains the build toolchain and GitHub Packages keeps its separate credential.
+
+### npm Trusted Publishing (OIDC)
+
+Choose `npm-auth-method: oidc` for fully automatic npm publication with short-lived credentials issued to a trusted GitHub Actions workflow. No `npm-token` is required. Existing consumers keep `token` authentication by default.
+
+Before the first OIDC run:
+
+1. Ensure the npm package exists. A first release must be bootstrapped once with interactive 2FA or staged and approved with 2FA. Do not stage a version and then try to publish that same pending version separately.
+2. In the package's npm settings, add a GitHub Actions trusted publisher matching the owning GitHub organization/user, repository, and **calling workflow filename**. The environment must match the publishing job if one is configured.
+3. Explicitly permit **`npm publish`** in the trusted publisher's allowed actions. Stage-only permissions require a maintainer approval for every version and do not permit unattended direct publication.
+4. Use GitHub-hosted runners, grant `id-token: write` to the publishing job, and install Node 22.14.0 or later with npm 11.5.1 or later. Pin the runtime and npm version for your workflow.
+
+For example, a Bun project can use:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --global npm@11.21.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.10'
+      - uses: wgtechlabs/package-build-flow-action@v2
+        with:
+          package-manager: bun
+          registry: both
+          npm-auth-method: oidc
+          github-token: ${{ github.token }}
+```
+
+Add your existing release triggers and version-planning inputs to this job. Bun handles installation, tests, build, and packing; the npm CLI publishes the archive using its native OIDC exchange. GitHub Packages still uses its own GitHub token. The OIDC publishing process isolates npm configuration and clears long-lived npm authentication inputs so an OIDC failure cannot fall back to a saved npm token.
+
+Reusable workflows need the permission in both the caller and publishing workflow, and the wrapper must forward `npm-auth-method`. npm validates the caller's filename, not the library workflow's filename. This primitive update does not itself upgrade existing Build Flow pins or consumer permissions.
+
+Dry runs, bot validation, and `publish-enabled: false` do not request an OIDC token or publish. A successful real publication keeps the existing `npm-published` and `artifact-published` output contract. Consumers publishing to both registries must still require successful publication in **both** before creating their release.
+
+Keep account 2FA enabled. npm's “Require two-factor authentication and disallow tokens” package setting is compatible with a trusted publisher allowed to publish directly. See [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) for provider configuration and [first-release staging](https://docs.npmjs.com/staged-publishing/) for the optional one-time bootstrap.
 
 ### NPM Registry Setup
 

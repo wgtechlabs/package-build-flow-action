@@ -6,6 +6,12 @@ set -e
 
 echo "🔧 Configuring registries..."
 
+NPM_AUTH_METHOD="${NPM_AUTH_METHOD:-token}"
+if [ "$NPM_AUTH_METHOD" != "token" ] && [ "$NPM_AUTH_METHOD" != "oidc" ]; then
+  echo "❌ Error: npm-auth-method must be 'token' or 'oidc'"
+  exit 1
+fi
+
 # Validate registry input
 if [ "$REGISTRY" != "npm" ] && [ "$REGISTRY" != "github" ] && [ "$REGISTRY" != "both" ]; then
   echo "❌ Error: Invalid registry value '$REGISTRY'. Must be 'npm', 'github', or 'both'"
@@ -30,16 +36,16 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "🔐 Configuring NPM registry..."
   
-  if [ -z "$NPM_TOKEN" ]; then
-    echo "❌ Error: NPM_TOKEN is required when publishing to NPM"
-    exit 1
+  if [ "$NPM_AUTH_METHOD" = "token" ]; then
+    if [ -z "$NPM_TOKEN" ]; then
+      echo "❌ Error: NPM_TOKEN is required when publishing to NPM with token authentication"
+      exit 1
+    fi
+    NPM_REGISTRY_HOST=$(echo "$NPM_REGISTRY_URL" | sed 's|https://||' | sed 's|http://||' | sed 's|/.*||')
+    echo "//${NPM_REGISTRY_HOST}/:_authToken=${NPM_TOKEN}" >> "$NPMRC_FILE"
+  else
+    echo "🔐 NPM trusted publishing selected; no NPM token is configured"
   fi
-  
-  # Extract registry hostname
-  NPM_REGISTRY_HOST=$(echo "$NPM_REGISTRY_URL" | sed 's|https://||' | sed 's|http://||' | sed 's|/.*||')
-  
-  # Configure NPM authentication
-  echo "//${NPM_REGISTRY_HOST}/:_authToken=${NPM_TOKEN}" >> "$NPMRC_FILE"
   
   # Only set global registry when publishing to NPM alone.
   # When REGISTRY=both, omit this line so the scoped registry for GitHub
