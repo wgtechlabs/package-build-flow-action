@@ -22,15 +22,30 @@ fi
 PACKAGE_NAME=$(jq -r '.name' "$PACKAGE_PATH")
 echo "📦 Package name: $PACKAGE_NAME"
 
-# Initialize .npmrc
+# Preserve caller configuration outside the package tree until cleanup.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REGISTRY_CONFIG_BACKUP_DIR="${REGISTRY_CONFIG_BACKUP_DIR:-$(bash "$SCRIPT_DIR/registry-config-backup.sh" backup)}"
+cleanup_failed_configuration() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    bash "$SCRIPT_DIR/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+  fi
+}
+trap cleanup_failed_configuration EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+echo "registry-backup-dir=$REGISTRY_CONFIG_BACKUP_DIR" >> "$GITHUB_OUTPUT"
+
+# Initialize .npmrc without following a caller's symlink.
 NPMRC_FILE=".npmrc"
-if [ -f "$NPMRC_FILE" ]; then
-  echo "⚠️  Backing up existing .npmrc"
-  cp "$NPMRC_FILE" "${NPMRC_FILE}.backup"
+rm -f "$NPMRC_FILE"
+PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
+if [ "$PACKAGE_DIR" != "$(pwd -P)" ] && [ -L "$PACKAGE_DIR/.npmrc" ]; then
+  rm "$PACKAGE_DIR/.npmrc"
 fi
 
 # Clear or create .npmrc
-> "$NPMRC_FILE"
+(umask 077; : > "$NPMRC_FILE")
 
 # Configure NPM registry
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then

@@ -524,6 +524,14 @@ runs:
         GITHUB_PUBLISHED: ${{ steps.publish.outputs.github-published }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
 
+    - name: Restore Registry Configuration
+      if: always() && inputs.monorepo != 'true' && steps.configure-registries.outputs.registry-backup-dir != ''
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+      env:
+        REGISTRY_CONFIG_BACKUP_DIR: ${{ steps.configure-registries.outputs.registry-backup-dir }}
+
 branding:
   icon: 'package'
   color: 'blue'

@@ -387,6 +387,16 @@ elif [ "$DEPENDENCY_ORDER" != "true" ]; then
   echo ""
 fi
 
+REGISTRY_CONFIG_BACKUP_DIR=""
+cleanup_registry_configuration() {
+  if [ -n "$REGISTRY_CONFIG_BACKUP_DIR" ]; then
+    bash "$ACTION_PATH/scripts/registry-config-backup.sh" restore "$REGISTRY_CONFIG_BACKUP_DIR"
+  fi
+}
+trap cleanup_registry_configuration EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # Process each package
 for i in "${!PACKAGE_ARRAY[@]}"; do
   PACKAGE_PATH="${PACKAGE_ARRAY[$i]}"
@@ -504,6 +514,12 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   
   # Step 2: Configure registries (always run if tokens are provided, to support private dependencies)
   echo ""
+  REGISTRY_CONFIG_BACKUP_DIR=$(bash "$ACTION_PATH/scripts/registry-config-backup.sh" backup)
+  export REGISTRY_CONFIG_BACKUP_DIR
+  PACKAGE_DIR=$(cd "$(dirname "$PACKAGE_PATH")" && pwd -P)
+  if [ -f .npmrc ] && [ "$PACKAGE_DIR" != "$(pwd -P)" ] && [ -L "$PACKAGE_DIR/.npmrc" ]; then
+    rm "$PACKAGE_DIR/.npmrc"
+  fi
   SKIP_REGISTRY_CONFIG=false
   
   # Skip only if both conditions are met:
@@ -527,6 +543,8 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
     else
       cat "$TEMP_OUTPUT"
       echo "❌ Registry configuration failed"
+      cleanup_registry_configuration
+      REGISTRY_CONFIG_BACKUP_DIR=""
       RESULT="failed"
       ERROR_MESSAGE="Registry configuration failed"
       FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
@@ -609,6 +627,9 @@ for i in "${!PACKAGE_ARRAY[@]}"; do
   else
     echo "⏭️  Security audit disabled"
   fi
+
+  cleanup_registry_configuration
+  REGISTRY_CONFIG_BACKUP_DIR=""
   
   # Add to results
   if [ "$RESULT" = "success" ]; then

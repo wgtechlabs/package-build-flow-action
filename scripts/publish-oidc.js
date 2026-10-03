@@ -40,8 +40,21 @@ try {
     throw new Error('NPM trusted publishing requires HTTPS except for loopback registries used in local tests.');
   }
 
+  const packageManager = process.env.PACKAGE_MANAGER === 'bun' ? 'bun' : 'npm';
+  const ignoreScripts = run('npm', ['config', 'get', 'ignore-scripts']).trim() === 'true';
+  const runLifecycle = event => {
+    if (ignoreScripts) return;
+    const sourceManifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    if (typeof sourceManifest.scripts?.[event] === 'string') {
+      // Run only this event: Bun's run command would add pre/post wrappers again.
+      run('npm', ['run', '--ignore-scripts', event]);
+    }
+  };
+
+  // Packing supplies prepack/prepare/postpack; restore publish's surrounding hooks.
+  runLifecycle('prepublishOnly');
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-oidc-'));
-  if (process.env.PACKAGE_MANAGER === 'bun') {
+  if (packageManager === 'bun') {
     run('bun', ['pm', 'pack', '--destination', directory]);
   } else {
     run('npm', ['pack', '--pack-destination', directory]);
@@ -78,6 +91,8 @@ try {
     '--registry', registry.href, '--tag', process.env.NPM_TAG];
   if (manifest.name.startsWith('@')) args.push('--access', process.env.ACCESS || 'public');
   run('npm', args, { cwd: directory, env });
+  runLifecycle('publish');
+  runLifecycle('postpublish');
 } catch (error) {
   console.error(`NPM trusted publishing failed: ${error.message}`);
   process.exitCode = 1;
