@@ -148,6 +148,21 @@ class TrustedPublishing(unittest.TestCase):
         self.assertIn('id-token: write', result.stderr)
         self.assertEqual(self.oidc_requests + self.requests, [])
 
+    def test_non_loopback_http_registry_is_rejected_before_packing(self):
+        package = self.package()
+        manifest = json.loads(package.read_text())
+        manifest['scripts'] = {'prepack': 'echo packed > pack-ran'}
+        package.write_text(json.dumps(manifest))
+        self.env['REGISTRY'] = 'npm'
+        for host in ('registry.example.test', 'localhost.example.test', '127.0.0.1.example.test', '[::2]'):
+            with self.subTest(host=host):
+                self.env['NPM_REGISTRY_URL'] = 'http://' + host
+                self.configure()
+                result = self.run_script('build-and-publish.sh', expected_exit=1)
+                self.assertIn('requires HTTPS except for loopback registries', result.stderr)
+                self.assertFalse((package.parent / 'pack-ran').exists())
+                self.assertEqual(self.oidc_requests + self.requests, [])
+
     def test_validation_modes_never_request_oidc(self):
         self.package()
         self.env['REGISTRY'] = 'npm'

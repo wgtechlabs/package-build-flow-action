@@ -36,6 +36,9 @@ try {
   if (!['https:', 'http:'].includes(registry.protocol) || registry.username || registry.password || registry.search || registry.hash) {
     throw new Error('NPM trusted publishing requires an HTTP(S) registry URL without credentials, query, or fragment.');
   }
+  if (registry.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(registry.hostname)) {
+    throw new Error('NPM trusted publishing requires HTTPS except for loopback registries used in local tests.');
+  }
 
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-oidc-'));
   if (process.env.PACKAGE_MANAGER === 'bun') {
