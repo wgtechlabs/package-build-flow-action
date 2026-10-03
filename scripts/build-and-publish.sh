@@ -9,6 +9,13 @@ echo "🏗️  Building and publishing package..."
 # Initialize outputs
 NPM_PUBLISHED="false"
 GITHUB_PUBLISHED="false"
+NPM_AUTH_METHOD="${NPM_AUTH_METHOD:-token}"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+if [ "$NPM_AUTH_METHOD" != "token" ] && [ "$NPM_AUTH_METHOD" != "oidc" ]; then
+  echo "❌ Error: npm-auth-method must be 'token' or 'oidc'"
+  exit 1
+fi
 
 write_publish_outputs() {
   local artifact_published="false"
@@ -269,6 +276,18 @@ fi
 publish_package() {
   local registry_url="$1"
   local dry_run="$2"
+  local registry_token="${3:-}"
+  local auth_method="${4:-token}"
+
+  if [ "$auth_method" = "oidc" ]; then
+    if [ "$dry_run" = "true" ]; then
+      echo "🔍 NPM trusted publishing validation only; no OIDC token requested or package published"
+      return 0
+    fi
+    NPM_PACKAGE_NAME="$PACKAGE_NAME" PACKAGE_MANAGER="$PKG_MANAGER" \
+      node "$SCRIPT_DIR/publish-oidc.js"
+    return $?
+  fi
 
   local publish_cmd=()
   if [ "$PKG_MANAGER" = "bun" ]; then
@@ -285,7 +304,16 @@ publish_package() {
     publish_cmd+=(--access "$ACCESS")
   fi
 
-  "${publish_cmd[@]}"
+  if [ "$PKG_MANAGER" = "bun" ]; then
+    if [ "$dry_run" != "true" ] && [ -z "$registry_token" ]; then
+      echo "❌ Error: A registry token is required for Bun publishing"
+      return 1
+    fi
+    # Bun needs an explicit token for --registry; keep it scoped to this publish.
+    BUN_CONFIG_TOKEN="$registry_token" NPM_CONFIG_TOKEN="$registry_token" "${publish_cmd[@]}"
+  else
+    "${publish_cmd[@]}"
+  fi
 }
 
 # Check if publishing is enabled
@@ -302,7 +330,7 @@ if [ "$DRY_RUN" = "true" ]; then
   
   if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
     echo "Would publish to NPM:"
-    publish_package "$NPM_REGISTRY_URL" "true"
+    publish_package "$NPM_REGISTRY_URL" "true" "${NPM_TOKEN:-}" "$NPM_AUTH_METHOD"
     NPM_PUBLISHED="dry-run"
   fi
   
@@ -334,7 +362,7 @@ if [ "$DRY_RUN" = "true" ]; then
       echo "📝 Scoped package name: $SCOPED_NAME"
     fi
     
-    publish_package "$GITHUB_REGISTRY_URL" "true"
+    publish_package "$GITHUB_REGISTRY_URL" "true" "${GITHUB_TOKEN:-}"
     GITHUB_PUBLISHED="dry-run"
     
     # Restore original name if changed
@@ -352,7 +380,7 @@ fi
 if [ "$REGISTRY" = "npm" ] || [ "$REGISTRY" = "both" ]; then
   echo "📤 Publishing to NPM..."
   
-  if publish_package "$NPM_REGISTRY_URL" "false"; then
+  if publish_package "$NPM_REGISTRY_URL" "false" "${NPM_TOKEN:-}" "$NPM_AUTH_METHOD"; then
     NPM_PUBLISHED="true"
     echo "✅ Published to NPM: $PACKAGE_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"
   else
@@ -393,7 +421,7 @@ if [ "$REGISTRY" = "github" ] || [ "$REGISTRY" = "both" ]; then
     NEEDS_RESTORE=true
   fi
   
-  if publish_package "$GITHUB_REGISTRY_URL" "false"; then
+  if publish_package "$GITHUB_REGISTRY_URL" "false" "${GITHUB_TOKEN:-}"; then
     GITHUB_PUBLISHED="true"
     PUBLISHED_NAME=$(jq -r '.name' "$PACKAGE_PATH")
     echo "✅ Published to GitHub Packages: $PUBLISHED_NAME@$PACKAGE_VERSION (tag: $NPM_TAG)"

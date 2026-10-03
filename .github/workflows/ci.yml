@@ -12,6 +12,33 @@ permissions:
   contents: read
 
 jobs:
+  registry-authentication:
+    name: Registry Authentication
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Setup Node.js for npm trusted publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Install minimum npm CLI for trusted publishing
+        run: npm install --global --ignore-scripts --no-audit --no-fund npm@11.5.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.10'
+
+      - name: Verify registry tokens with local fake credentials
+        run: python3 tests/bun-registry-auth.py
+
+      - name: Verify npm trusted publishing with a local OIDC issuer and registries
+        run: python3 tests/npm-oidc.py
+
   bot-detection-script:
     name: Bot Detection Script
     runs-on: ubuntu-latest

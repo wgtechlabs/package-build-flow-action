@@ -4,6 +4,9 @@ set -e
 # Monorepo Orchestrator
 # Loops over multiple package paths and runs detect → build → publish for each
 
+# Keep registry configuration and publishing on the same authentication method.
+export NPM_AUTH_METHOD="${NPM_AUTH_METHOD:-token}"
+
 echo "🎯 Monorepo mode enabled"
 echo "===================="
 echo ""

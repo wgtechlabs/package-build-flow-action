@@ -10,8 +10,13 @@ inputs:
     default: 'both'
   
   npm-token:
-    description: 'NPM access token (required if registry includes npm)'
+    description: 'NPM access token (required when registry includes npm and npm-auth-method is token; ignored for oidc)'
     required: false
+
+  npm-auth-method:
+    description: 'NPM publishing authentication: token or oidc (requires an npm trusted publisher and id-token: write)'
+    required: false
+    default: 'token'
   
   npm-registry-url:
     description: 'NPM registry URL'
@@ -355,6 +360,7 @@ runs:
         VERSION_PREFIX: ${{ inputs.version-prefix }}
         REGISTRY: ${{ inputs.registry }}
         NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
@@ -433,6 +439,7 @@ runs:
       env:
         REGISTRY: ${{ inputs.registry }}
         NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
@@ -455,7 +462,10 @@ runs:
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         PUBLISH_ENABLED: ${{ inputs.publish-enabled }}
         DRY_RUN: ${{ inputs.dry-run }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        NPM_AUTH_METHOD: ${{ inputs.npm-auth-method }}
         NPM_REGISTRY_URL: ${{ inputs.npm-registry-url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
         PACKAGE_SCOPE: ${{ inputs.package-scope }}
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
