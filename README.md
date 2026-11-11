@@ -188,6 +188,8 @@ Tag: patch
 | `planned-npm-tag` | npm dist-tag to use with `planned-version`; must be paired with `planned-version` | - | No |
 | `planned-package-versions` | `packages-updated` JSON from `release-build-flow-action`; in monorepo mode on a push to `main`, each unique `{path, version}` entry is published with `planned-npm-tag` (directory paths and `package.json` paths are accepted; extra release-plan fields are ignored) | - | No |
 
+The publish flow installs dependencies, runs `build-script` when that script exists, and publishes. Run the package tests in the calling workflow's CI before this action. Optional in-action tests for standalone use are tracked in [#51](https://github.com/wgtechlabs/package-build-flow-action/issues/51).
+
 ### Commit Convention Gate Configuration
 
 | Input | Description | Default | Required |
@@ -345,7 +347,7 @@ steps:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-The action will use Bun for install/build/test, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so token-authenticated Bun publishing can run without `actions/setup-node`. OIDC additionally requires Node and the npm CLI for publication transport, as described below.
+The action will use Bun for install and build, Bun-compatible helper scripts, Bun audit, and `bun publish` when the Bun path is selected. That same runtime-aware helper path now applies to Bun monorepos, including workspace discovery and dependency ordering, so token-authenticated Bun publishing can run without `actions/setup-node`. OIDC additionally requires Node and the npm CLI for publication transport, as described below.
 
 ##### pnpm
 
@@ -441,7 +443,7 @@ jobs:
           github-token: ${{ github.token }}
 ```
 
-Add your existing release triggers and version-planning inputs to this job. Bun handles installation, tests, build, and packing; the npm CLI publishes the archive using its native OIDC exchange. GitHub Packages still uses its own GitHub token. The OIDC publishing process isolates npm configuration and clears long-lived npm authentication inputs so an OIDC failure cannot fall back to a saved npm token.
+Add your existing release triggers and version-planning inputs to this job. Bun handles installation, build, and packing; the npm CLI publishes the archive using its native OIDC exchange. GitHub Packages still uses its own GitHub token. The OIDC publishing process isolates npm configuration and clears long-lived npm authentication inputs so an OIDC failure cannot fall back to a saved npm token.
 
 In OIDC mode, npm's lifecycle runner executes `prepublishOnly` before packing and `publish`/`postpublish` after a successful upload. Each event runs once unless npm's `ignore-scripts` setting disables these hooks; the action reads that setting before replacing the project's registry configuration. A failing `prepublishOnly` blocks publication. Bun's `ignoreScripts` configuration continues to govern Bun installation and packing, but does not disable these npm-managed publish hooks. If a hook fails after npm accepts the version, the action fails while `npm-published` and `artifact-published` remain `true`; inspect the registry before retrying that version. Monorepo results likewise retain the successful upload and report the hook failure.
 
