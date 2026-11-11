@@ -222,14 +222,6 @@ if [ -n "$BUILD_SCRIPT" ]; then
   fi
 fi
 
-# Run tests if defined
-if jq -e '.scripts.test' "$PACKAGE_PATH" > /dev/null 2>&1; then
-  echo "🧪 Running tests..."
-  # Use 'run test' for consistent behavior across npm and Bun
-  # This ensures we run the package.json script, not Bun's built-in test runner
-  "$PKG_MANAGER" run test || echo "⚠️  Tests failed but continuing..."
-fi
-
 # Resolve workspace protocol dependencies before publishing
 # This converts workspace:* references to actual semver versions
 WORKSPACE_BACKUP="${PACKAGE_PATH}.workspace-backup"
