@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [2.3.1] - 2026-11-11
+
+### Changed
+
+- stop running package tests during publish (#52)
+- bump actions/checkout to 7.0.1 (#49)
+- bump actions/setup-node from 4 to 7 (#48)
+
 ## [2.3.0] - 2026-10-03
 
 ### Added
